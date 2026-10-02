@@ -19,9 +19,11 @@ class JarvisTests(unittest.TestCase):
         cls.previous_db = jarvis.DB_PATH
         cls.previous_cache = jarvis.TTS_CACHE
         cls.previous_music = jarvis.MUSIC_PATH
+        cls.previous_key = jarvis.KEY_PATH
         jarvis.DB_PATH = Path(cls.temp.name) / "jarvis.sqlite3"
         jarvis.TTS_CACHE = Path(cls.temp.name) / "tts-cache"
         jarvis.MUSIC_PATH = Path(cls.temp.name) / "intro.mp3"
+        jarvis.KEY_PATH = Path(cls.temp.name) / "openai.key"
         cls.http = ThreadingHTTPServer(("127.0.0.1", 0), jarvis.Handler)
         cls.thread = threading.Thread(target=cls.http.serve_forever, daemon=True)
         cls.thread.start()
@@ -35,6 +37,7 @@ class JarvisTests(unittest.TestCase):
         jarvis.DB_PATH = cls.previous_db
         jarvis.TTS_CACHE = cls.previous_cache
         jarvis.MUSIC_PATH = cls.previous_music
+        jarvis.KEY_PATH = cls.previous_key
         cls.temp.cleanup()
 
     def request(self, path, method="GET", payload=None):
@@ -102,6 +105,20 @@ class JarvisTests(unittest.TestCase):
                 self.assertEqual(response.headers.get_content_type(), "audio/mpeg")
                 self.assertEqual(response.read(), b"mock-mp3")
             speech.assert_called_once_with("Buongiorno, Signore.")
+
+    def test_api_key_comes_from_environment_or_local_file(self):
+        with patch.dict(jarvis.os.environ, {"OPENAI_API_KEY": ""}):
+            self.assertEqual(jarvis.api_key(), "")
+            jarvis.KEY_PATH.write_text("sk-dal-file\n")
+            try:
+                self.assertEqual(jarvis.api_key(), "sk-dal-file")
+                _, state = self.request("/api/state")
+                self.assertEqual(state["mode"], "AI online")
+                self.assertTrue(state["natural_voice"])
+            finally:
+                jarvis.KEY_PATH.unlink()
+        with patch.dict(jarvis.os.environ, {"OPENAI_API_KEY": "sk-ambiente"}):
+            self.assertEqual(jarvis.api_key(), "sk-ambiente")
 
     def test_speech_is_cached_by_text(self):
         with patch.object(jarvis, "natural_speech", return_value=b"cached-mp3") as speech:

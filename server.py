@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlparse
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "data" / "jarvis.sqlite3"
 TTS_CACHE = ROOT / "data" / "tts-cache"
+KEY_PATH = ROOT / "data" / "openai.key"
 MUSIC_PATH = ROOT / "assets" / "music" / "intro.mp3"
 MAX_BODY = 16_384
 MAX_MESSAGE = 2_000
@@ -46,6 +47,17 @@ BOOT_FIXED_LINES = [
     "Sì, signore?",
     "Sì, Signor Kevin?",
 ]
+
+
+def api_key():
+    """The OpenAI key from the environment, or from data/openai.key so the folder starts with a double click."""
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if key:
+        return key
+    try:
+        return KEY_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 def connect():
@@ -134,7 +146,7 @@ def local_reply(value):
 
 
 def ai_reply(value):
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    key = api_key()
     if not key:
         return local_reply(value)
     saved = memories()
@@ -206,7 +218,7 @@ def speech_audio(value):
 
 def prewarm_speech():
     """Generate the fixed wake-up lines in the background when an API key is configured."""
-    if not os.environ.get("OPENAI_API_KEY", "").strip():
+    if not api_key():
         return
     for line in BOOT_FIXED_LINES:
         try:
@@ -263,7 +275,7 @@ def check_speech_cache(key):
 
 def self_check():
     """Real health checks; each entry is a 'system'. Repairs what it can and reports what it did."""
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    key = api_key()
     results = []
 
     # Optional systems are features that can be off by choice (no API key, no music file): never faults.
@@ -326,7 +338,7 @@ def brain_status():
 
 
 def natural_speech(value):
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    key = api_key()
     if not key:
         raise RuntimeError("La voce naturale richiede una chiave API. Uso la voce del dispositivo.")
     request = urllib.request.Request(
@@ -390,7 +402,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/state":
-            return self.send_json(200, {"mode": "AI online" if os.environ.get("OPENAI_API_KEY") else "Locale", "natural_voice": bool(os.environ.get("OPENAI_API_KEY")), "history": recent_user_messages(10), "history_count": history_count(), "messages": messages(), "voice_identity": "Sperimentale"})
+            return self.send_json(200, {"mode": "AI online" if api_key() else "Locale", "natural_voice": bool(api_key()), "history": recent_user_messages(10), "history_count": history_count(), "messages": messages(), "voice_identity": "Sperimentale"})
         if path == "/api/history":
             query = parse_qs(urlparse(self.path).query).get("query", [""])[0][:200]
             return self.send_json(200, {"history": search_history(query, 20), "history_count": history_count()})
