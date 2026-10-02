@@ -6,6 +6,7 @@
 - Tono sarcastico ed elegante nel risveglio, nelle risposte AI e nella voce naturale.
 - Al risveglio dice l'ora con un commento, e il meteo: temperatura, pioggia prevista o bella giornata (Open-Meteo, senza chiave). La città si imposta nel pannello «La tua voce», altrimenti usa la posizione del browser o `data/citta.txt`.
 - La chiave OpenAI può stare in `data/openai.key`: il doppio clic avvia la voce naturale senza Terminale.
+- Voce a scelta: ElevenLabs (`data/elevenlabs.key`, voce maschile scelta da sola o indicata in `data/voce.txt`) oppure OpenAI con la voce indicata (`openai:onyx`). Gli errori del servizio vocale ora dicono la causa (chiave, credito, rete).
 
 ## v1.0 — risveglio
 

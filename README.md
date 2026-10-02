@@ -14,6 +14,15 @@ Di' **«Jarvis»** da solo (con l'ascolto continuo attivo) e parte la sequenza d
 - **Ora e meteo.** Jarvis saluta in base all'ora, dice che ore sono con un commento e il meteo: temperatura attuale, pioggia prevista (con probabilità) o bella giornata. I dati vengono da Open-Meteo, senza registrazione. Scrivi la città nel pannello «La tua voce»; se la lasci vuota, Chrome chiede la posizione; in alternativa crea `data/citta.txt` con il nome della città o imposta `JARVIS_CITY`.
 - **Chiave senza Terminale.** Se metti la chiave OpenAI in `data/openai.key` (una riga), Jarvis la trova da solo anche col doppio clic. La variabile `OPENAI_API_KEY`, se presente, ha la precedenza.
 
+## Scegliere la voce
+
+Jarvis può parlare con due servizi; nessuno dei due imita persone reali o personaggi.
+
+- **OpenAI** (serve `data/openai.key`): voce predefinita `cedar`. Per una voce più profonda scrivi `openai:onyx` nel file `data/voce.txt` (altre voci maschili: `echo`, `ash`).
+- **ElevenLabs** (voci più naturali; piano gratuito con un limite mensile di caratteri): crea un account su elevenlabs.io, copia la chiave API in `data/elevenlabs.key` e, se vuoi una voce precisa, scrivi `elevenlabs:ID_DELLA_VOCE` in `data/voce.txt` (l'ID lo copi dalla libreria voci). Senza `voce.txt`, Jarvis sceglie da solo una voce maschile della libreria, britannica se c'è. Se ElevenLabs non risponde o la quota è finita, Jarvis ripiega su OpenAI e poi sulla voce del dispositivo.
+
+Quando cambi voce, le battute vengono rigenerate alla prima occasione (la cache in `data/tts-cache` distingue le voci). Il riquadro «La tua voce» mostra quale voce è attiva; se senti la voce del Mac, premi «Prova voce» e il riquadro di stato dice il motivo (chiave non valida, credito esaurito, servizio non raggiungibile).
+
 ## Avvio
 
 - macOS: fai doppio clic su `Avvia Jarvis.command` oppure esegui `python3 server.py`. Se Google Chrome è installato nella cartella Applicazioni, Jarvis si apre automaticamente lì; altrimenti usa il browser predefinito.

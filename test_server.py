@@ -20,10 +20,14 @@ class JarvisTests(unittest.TestCase):
         cls.previous_cache = jarvis.TTS_CACHE
         cls.previous_music = jarvis.MUSIC_PATH
         cls.previous_key = jarvis.KEY_PATH
+        cls.previous_eleven = jarvis.ELEVEN_KEY_PATH
+        cls.previous_voice = jarvis.VOICE_PATH
         jarvis.DB_PATH = Path(cls.temp.name) / "jarvis.sqlite3"
         jarvis.TTS_CACHE = Path(cls.temp.name) / "tts-cache"
         jarvis.MUSIC_PATH = Path(cls.temp.name) / "intro.mp3"
         jarvis.KEY_PATH = Path(cls.temp.name) / "openai.key"
+        jarvis.ELEVEN_KEY_PATH = Path(cls.temp.name) / "elevenlabs.key"
+        jarvis.VOICE_PATH = Path(cls.temp.name) / "voce.txt"
         cls.http = ThreadingHTTPServer(("127.0.0.1", 0), jarvis.Handler)
         cls.thread = threading.Thread(target=cls.http.serve_forever, daemon=True)
         cls.thread.start()
@@ -38,6 +42,8 @@ class JarvisTests(unittest.TestCase):
         jarvis.TTS_CACHE = cls.previous_cache
         jarvis.MUSIC_PATH = cls.previous_music
         jarvis.KEY_PATH = cls.previous_key
+        jarvis.ELEVEN_KEY_PATH = cls.previous_eleven
+        jarvis.VOICE_PATH = cls.previous_voice
         cls.temp.cleanup()
 
     def request(self, path, method="GET", payload=None):
@@ -212,6 +218,65 @@ class JarvisTests(unittest.TestCase):
         with patch.object(jarvis, "speech_audio") as speech, patch.dict(jarvis.os.environ, {"OPENAI_API_KEY": "test-key"}):
             jarvis.prewarm_speech()
             self.assertEqual([call.args[0] for call in speech.call_args_list], jarvis.BOOT_FIXED_LINES)
+
+    def test_voice_choice_prefers_elevenlabs_when_its_key_exists(self):
+        with patch.dict(jarvis.os.environ, {"ELEVENLABS_API_KEY": "", "JARVIS_VOICE": "", "OPENAI_API_KEY": ""}):
+            self.assertEqual(jarvis.voice_choice(), ("openai", "cedar"))
+            self.assertFalse(jarvis.voice_available())
+            jarvis.ELEVEN_KEY_PATH.write_text("xi-test\n")
+            try:
+                self.assertEqual(jarvis.voice_choice(), ("elevenlabs", ""))
+                self.assertTrue(jarvis.voice_available())
+                self.assertIn("ElevenLabs", jarvis.voice_label())
+                jarvis.VOICE_PATH.write_text("openai:onyx\n")
+                self.assertEqual(jarvis.voice_choice(), ("openai", "onyx"))
+                jarvis.VOICE_PATH.write_text("elevenlabs:AbC123\n")
+                self.assertEqual(jarvis.voice_choice(), ("elevenlabs", "AbC123"))
+                _, state = self.request("/api/state")
+                self.assertTrue(state["natural_voice"])
+                self.assertEqual(state["voice"], "ElevenLabs · AbC123")
+            finally:
+                jarvis.ELEVEN_KEY_PATH.unlink()
+                jarvis.VOICE_PATH.unlink()
+
+    def test_elevenlabs_speech_request_and_fallback_to_openai(self):
+        with patch.dict(jarvis.os.environ, {"ELEVENLABS_API_KEY": "xi-test", "JARVIS_VOICE": "elevenlabs:VoiceId1", "OPENAI_API_KEY": "sk-test"}):
+            with patch.object(jarvis.urllib.request, "urlopen", return_value=io.BytesIO(b"eleven-mp3")) as send:
+                self.assertEqual(jarvis.natural_speech("Buongiorno, signore."), b"eleven-mp3")
+                request = send.call_args.args[0]
+                self.assertTrue(request.full_url.startswith("https://api.elevenlabs.io/v1/text-to-speech/VoiceId1"))
+                self.assertEqual(request.get_header("Xi-api-key"), "xi-test")
+                body = json.loads(request.data)
+                self.assertEqual(body["model_id"], jarvis.ELEVEN_MODEL)
+                self.assertEqual(body["text"], "Buongiorno, signore.")
+            failure = urllib.error.HTTPError("https://api.elevenlabs.io", 401, "Unauthorized", {}, None)
+            with patch.object(jarvis.urllib.request, "urlopen", side_effect=[failure, io.BytesIO(b"openai-mp3")]) as send:
+                self.assertEqual(jarvis.natural_speech("Buongiorno, signore."), b"openai-mp3")
+                self.assertEqual(send.call_args.args[0].full_url, "https://api.openai.com/v1/audio/speech")
+        with patch.dict(jarvis.os.environ, {"ELEVENLABS_API_KEY": "xi-test", "JARVIS_VOICE": "elevenlabs:VoiceId1", "OPENAI_API_KEY": ""}):
+            with patch.object(jarvis.urllib.request, "urlopen", side_effect=urllib.error.HTTPError("https://api.elevenlabs.io", 429, "Too Many", {}, None)):
+                with self.assertRaises(RuntimeError) as error:
+                    jarvis.natural_speech("Buongiorno, signore.")
+                self.assertIn("429", str(error.exception))
+                self.assertIn("quota", str(error.exception))
+
+    def test_elevenlabs_picks_a_male_british_voice_when_none_is_configured(self):
+        voices = {"voices": [
+            {"voice_id": "f1", "name": "Rachel", "category": "premade", "labels": {"gender": "female", "accent": "american"}},
+            {"voice_id": "m1", "name": "Adam", "category": "premade", "labels": {"gender": "male", "accent": "american"}},
+            {"voice_id": "m2", "name": "George", "category": "premade", "labels": {"gender": "male", "accent": "British"}},
+        ]}
+        jarvis.ELEVEN_VOICE_CACHE.clear()
+        with patch.object(jarvis.urllib.request, "urlopen", return_value=io.BytesIO(json.dumps(voices).encode())):
+            self.assertEqual(jarvis.pick_eleven_voice("xi-test"), ("m2", "George"))
+        jarvis.ELEVEN_VOICE_CACHE.clear()
+
+    def test_speech_cache_depends_on_the_voice(self):
+        with patch.dict(jarvis.os.environ, {"JARVIS_VOICE": "openai:cedar"}):
+            cedar = jarvis.speech_cache_path("Ciao.")
+        with patch.dict(jarvis.os.environ, {"JARVIS_VOICE": "openai:onyx"}):
+            onyx = jarvis.speech_cache_path("Ciao.")
+        self.assertNotEqual(cedar, onyx)
 
     def test_natural_speech_uses_original_voice_style(self):
         with patch.dict(jarvis.os.environ, {"OPENAI_API_KEY": "test-key"}), \

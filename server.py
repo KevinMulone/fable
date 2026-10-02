@@ -23,6 +23,10 @@ DB_PATH = ROOT / "data" / "jarvis.sqlite3"
 TTS_CACHE = ROOT / "data" / "tts-cache"
 KEY_PATH = ROOT / "data" / "openai.key"
 CITY_PATH = ROOT / "data" / "citta.txt"
+ELEVEN_KEY_PATH = ROOT / "data" / "elevenlabs.key"
+VOICE_PATH = ROOT / "data" / "voce.txt"
+ELEVEN_MODEL = "eleven_multilingual_v2"
+OPENAI_DEFAULT_VOICE = "cedar"
 WEATHER_TTL = 600
 MUSIC_PATH = ROOT / "assets" / "music" / "intro.mp3"
 MAX_BODY = 16_384
@@ -63,6 +67,46 @@ def api_key():
         return KEY_PATH.read_text(encoding="utf-8").strip()
     except OSError:
         return ""
+
+
+def read_setting(env_name, path):
+    value = os.environ.get(env_name, "").strip()
+    if value:
+        return value
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def eleven_key():
+    return read_setting("ELEVENLABS_API_KEY", ELEVEN_KEY_PATH)
+
+
+def voice_choice():
+    """Which synthetic voice to use: 'elevenlabs[:voice_id]' or 'openai:name' (JARVIS_VOICE or data/voce.txt)."""
+    raw = read_setting("JARVIS_VOICE", VOICE_PATH)
+    if not raw:
+        return ("elevenlabs", "") if eleven_key() else ("openai", OPENAI_DEFAULT_VOICE)
+    provider, _, voice = raw.partition(":")
+    provider = provider.strip().casefold()
+    voice = voice.strip()  # ElevenLabs voice ids are case-sensitive.
+    if provider in ("elevenlabs", "eleven"):
+        return "elevenlabs", voice
+    if provider == "openai":
+        return "openai", voice or OPENAI_DEFAULT_VOICE
+    return ("elevenlabs", "") if eleven_key() else ("openai", OPENAI_DEFAULT_VOICE)
+
+
+def voice_available():
+    return bool(api_key() or eleven_key())
+
+
+def voice_label():
+    provider, voice = voice_choice()
+    if provider == "elevenlabs":
+        return "ElevenLabs" + (f" · {voice}" if voice else " · voce scelta automaticamente")
+    return f"OpenAI · {voice}"
 
 
 def connect():
@@ -283,7 +327,8 @@ def memory_count():
 
 
 def speech_cache_path(value):
-    return TTS_CACHE / (hashlib.sha256(value.encode("utf-8")).hexdigest()[:32] + ".mp3")
+    provider, voice = voice_choice()
+    return TTS_CACHE / (hashlib.sha256(f"{provider}:{voice}\n{value}".encode("utf-8")).hexdigest()[:32] + ".mp3")
 
 
 def speech_audio(value):
@@ -303,8 +348,8 @@ def speech_audio(value):
 
 
 def prewarm_speech():
-    """Generate the fixed wake-up lines in the background when an API key is configured."""
-    if not api_key():
+    """Generate the fixed wake-up lines in the background when a voice service is configured."""
+    if not voice_available():
         return
     for line in BOOT_FIXED_LINES:
         try:
@@ -377,8 +422,8 @@ def self_check():
     add("metodi", "METODI", True, detail=f"{len(METHODS)} metodi caricati.")
     add("chat-locale", "CHAT LOCALE", True, detail="Risposte locali attive.")
     add("chat-ai", "CHAT AI", bool(key), detail="Modello AI configurato." if key else "Chiave API assente: modalità locale.", optional=True)
-    add("voce-naturale", "VOCE NATURALE", bool(key), detail="Sintesi vocale AI attiva." if key else "Chiave API assente: voce del dispositivo.", optional=True)
-    add("cache-vocale", "CACHE VOCALE", *check_speech_cache(key))
+    add("voce-naturale", "VOCE NATURALE", voice_available(), detail=f"Sintesi vocale {voice_label()}." if voice_available() else "Nessuna chiave vocale: voce del dispositivo.", optional=True)
+    add("cache-vocale", "CACHE VOCALE", *check_speech_cache(voice_available()))
     music = MUSIC_PATH.is_file() and 0 < MUSIC_PATH.stat().st_size <= MAX_MUSIC
     add("musica", "MUSICA DI AVVIO", music, detail="Brano di avvio presente." if music else "Manca assets/music/intro.mp3.", optional=True)
     add("portabilita", "PORTABILITÀ", True, detail="Avvio da cartella o chiavetta.")
@@ -423,7 +468,28 @@ def brain_status():
     }
 
 
-def natural_speech(value):
+def http_hint(service, error):
+    """A readable reason for a failed voice request, so the page can say what to fix."""
+    if isinstance(error, urllib.error.HTTPError):
+        hints = {401: "chiave non valida", 403: "chiave senza permessi", 402: "credito esaurito", 429: "quota o credito esaurito", 404: "voce non trovata"}
+        return f"{service} ha risposto {error.code} ({hints.get(error.code, error.reason)})."
+    if isinstance(error, TimeoutError) or isinstance(getattr(error, "reason", None), TimeoutError):
+        return f"{service} non ha risposto in tempo."
+    return f"{service} non è raggiungibile."
+
+
+def fetch_audio(request, service, timeout=45):
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            audio = response.read(8_000_001)
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise RuntimeError(f"Voce naturale non disponibile: {http_hint(service, error)} Uso la voce del dispositivo.") from error
+    if not audio or len(audio) > 8_000_000:
+        raise RuntimeError("Audio vocale non valido o troppo grande. Uso la voce del dispositivo.")
+    return audio
+
+
+def openai_speech(value, voice):
     key = api_key()
     if not key:
         raise RuntimeError("La voce naturale richiede una chiave API. Uso la voce del dispositivo.")
@@ -431,7 +497,7 @@ def natural_speech(value):
         "https://api.openai.com/v1/audio/speech",
         data=json.dumps({
             "model": "gpt-4o-mini-tts",
-            "voice": "cedar",
+            "voice": voice or OPENAI_DEFAULT_VOICE,
             "input": value,
             "instructions": (
                 "Parla in italiano con una voce originale dal timbro medio-basso, caldo e sicuro, da maggiordomo impeccabile. "
@@ -444,14 +510,68 @@ def natural_speech(value):
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
         method="POST",
     )
+    return fetch_audio(request, "OpenAI")
+
+
+ELEVEN_VOICE_CACHE = {}
+
+
+def pick_eleven_voice(key):
+    """No voice id configured: choose a stock male voice from the account's library, British first."""
+    if key in ELEVEN_VOICE_CACHE:
+        return ELEVEN_VOICE_CACHE[key]
+    request = urllib.request.Request("https://api.elevenlabs.io/v1/voices", headers={"xi-api-key": key})
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
-            audio = response.read(8_000_001)
-    except (urllib.error.URLError, TimeoutError) as error:
-        raise RuntimeError("La voce naturale non è disponibile. Uso la voce del dispositivo.") from error
-    if not audio or len(audio) > 8_000_000:
-        raise RuntimeError("Audio vocale non valido o troppo grande. Uso la voce del dispositivo.")
-    return audio
+        with urllib.request.urlopen(request, timeout=20) as response:
+            voices = json.load(response).get("voices", [])
+    except (urllib.error.URLError, TimeoutError, ValueError) as error:
+        raise RuntimeError(f"Voce naturale non disponibile: {http_hint('ElevenLabs', error)} Uso la voce del dispositivo.") from error
+
+    def score(voice):
+        labels = {str(k).casefold(): str(v).casefold() for k, v in (voice.get("labels") or {}).items()}
+        male = labels.get("gender") == "male"
+        british = "british" in labels.get("accent", "")
+        return (male, british, voice.get("name", "").casefold() == "george", voice.get("category") == "premade")
+
+    candidates = [voice for voice in voices if voice.get("voice_id")]
+    if not candidates:
+        raise RuntimeError("Nessuna voce disponibile nell'account ElevenLabs. Uso la voce del dispositivo.")
+    chosen = max(candidates, key=score)
+    ELEVEN_VOICE_CACHE[key] = (chosen["voice_id"], chosen.get("name", ""))
+    return ELEVEN_VOICE_CACHE[key]
+
+
+def eleven_speech(value, voice_id):
+    key = eleven_key()
+    if not key:
+        raise RuntimeError("La voce ElevenLabs richiede la chiave in data/elevenlabs.key. Uso la voce del dispositivo.")
+    if not voice_id:
+        voice_id, _ = pick_eleven_voice(key)
+    request = urllib.request.Request(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{urllib.parse.quote(voice_id)}?output_format=mp3_44100_128",
+        data=json.dumps({
+            "text": value,
+            "model_id": ELEVEN_MODEL,
+            "language_code": "it",
+            "voice_settings": {"stability": 0.55, "similarity_boost": 0.8, "style": 0.15, "use_speaker_boost": True},
+        }).encode("utf-8"),
+        headers={"xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg"},
+        method="POST",
+    )
+    return fetch_audio(request, "ElevenLabs")
+
+
+def natural_speech(value):
+    """ElevenLabs when configured, otherwise OpenAI; ElevenLabs failures fall back to OpenAI when possible."""
+    provider, voice = voice_choice()
+    if provider == "elevenlabs":
+        try:
+            return eleven_speech(value, voice)
+        except RuntimeError:
+            if not api_key():
+                raise
+            return openai_speech(value, OPENAI_DEFAULT_VOICE)
+    return openai_speech(value, voice)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -488,7 +608,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/state":
-            return self.send_json(200, {"mode": "AI online" if api_key() else "Locale", "natural_voice": bool(api_key()), "history": recent_user_messages(10), "history_count": history_count(), "messages": messages(), "voice_identity": "Sperimentale"})
+            return self.send_json(200, {"mode": "AI online" if api_key() else "Locale", "natural_voice": voice_available(), "voice": voice_label() if voice_available() else "", "history": recent_user_messages(10), "history_count": history_count(), "messages": messages(), "voice_identity": "Sperimentale"})
         if path == "/api/history":
             query = parse_qs(urlparse(self.path).query).get("query", [""])[0][:200]
             return self.send_json(200, {"history": search_history(query, 20), "history_count": history_count()})

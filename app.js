@@ -9,6 +9,7 @@ let speechEnabled = true;
 let speechSequence = 0;
 let startingListening = false;
 let naturalVoiceAvailable = false;
+let naturalVoiceLabel = '';
 let naturalVoiceEnabled = true;
 let activeAudio = null;
 let activeAudioUrl = null;
@@ -253,6 +254,7 @@ async function loadState() {
     const state = await api('/api/state');
     elements.mode.textContent = `Modalità ${state.mode}`;
     naturalVoiceAvailable = Boolean(state.natural_voice);
+    naturalVoiceLabel = state.voice || '';
     updateQualityControls();
     renderHistory(state.history, state.history_count);
     if (state.messages.length) {
@@ -305,8 +307,8 @@ function updateQualityControls() {
     : 'Voce naturale: serve API';
   elements.qualityToggle.setAttribute('aria-pressed', String(naturalVoiceAvailable && naturalVoiceEnabled));
   elements.qualityNote.textContent = naturalVoiceAvailable
-    ? 'La voce naturale è generata dall’AI: il testo delle risposte viene inviato a OpenAI e può avere un costo. Puoi disattivarla qui sopra.'
-    : 'Voce AI non attiva: Jarvis usa una voce installata sul dispositivo. Per la voce naturale avvialo con una chiave API.';
+    ? `Voce naturale: ${naturalVoiceLabel}. Il testo delle risposte viene inviato a quel servizio e può avere un costo. Puoi disattivarla qui sopra; se senti la voce del Mac, premi «Prova voce» e leggi il motivo nel riquadro di stato.`
+    : 'Voce AI non attiva: Jarvis usa una voce installata sul dispositivo. Metti la chiave in data/openai.key o data/elevenlabs.key.';
 }
 
 elements.qualityToggle.addEventListener('click', () => {
