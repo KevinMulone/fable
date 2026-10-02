@@ -106,6 +106,43 @@ class JarvisTests(unittest.TestCase):
                 self.assertEqual(response.read(), b"mock-mp3")
             speech.assert_called_once_with("Buongiorno, Signore.")
 
+    def test_greeting_follows_the_hour(self):
+        self.assertEqual(jarvis.greeting(7), "Buongiorno")
+        self.assertEqual(jarvis.greeting(14), "Buon pomeriggio")
+        self.assertEqual(jarvis.greeting(21), "Buonasera")
+        self.assertEqual(jarvis.greeting(3), "Buonanotte")
+
+    def test_weather_from_coordinates_and_city(self):
+        forecast = {"current": {"temperature_2m": 17.6, "weather_code": 61, "precipitation": 0.4},
+                    "daily": {"weather_code": [63], "precipitation_probability_max": [75], "temperature_2m_max": [19.2], "temperature_2m_min": [11.8]}}
+        places = {"results": [{"name": "Milano", "latitude": 45.46, "longitude": 9.19}]}
+        jarvis.WEATHER_CACHE.clear()
+        with patch.object(jarvis, "fetch_json", side_effect=[forecast]) as fetch:
+            status, data = self.request("/api/weather?lat=45.46&lon=9.19")
+            self.assertEqual(status, 200)
+            self.assertEqual(data["temperature"], 18)
+            self.assertTrue(data["rain_expected"])
+            self.assertEqual(data["rain_probability"], 75)
+            self.assertEqual(data["description"], "pioggia leggera")
+            self.assertEqual(data["day_description"], "pioggia")
+            self.assertFalse(data["nice_day"])
+            self.assertIn("latitude=45.46", fetch.call_args.args[0])
+            self.request("/api/weather?lat=45.46&lon=9.19")
+            fetch.assert_called_once()
+        jarvis.WEATHER_CACHE.clear()
+        sunny = {"current": {"temperature_2m": 24.2, "weather_code": 0}, "daily": {"weather_code": [1], "precipitation_probability_max": [5], "temperature_2m_max": [27], "temperature_2m_min": [15]}}
+        with patch.object(jarvis, "fetch_json", side_effect=[places, sunny]) as fetch:
+            _, data = self.request("/api/weather?city=Milano")
+            self.assertEqual(data["place"], "Milano")
+            self.assertTrue(data["nice_day"])
+            self.assertIn("name=Milano", fetch.call_args_list[0].args[0])
+        with patch.object(jarvis, "fetch_json", side_effect=[{"results": []}]), self.assertRaises(urllib.error.HTTPError) as missing:
+            self.request("/api/weather?city=Nessunluogo")
+        self.assertEqual(missing.exception.code, 404)
+        with patch.dict(jarvis.os.environ, {"JARVIS_CITY": ""}), self.assertRaises(urllib.error.HTTPError) as unknown:
+            self.request("/api/weather")
+        self.assertEqual(unknown.exception.code, 404)
+
     def test_api_key_comes_from_environment_or_local_file(self):
         with patch.dict(jarvis.os.environ, {"OPENAI_API_KEY": ""}):
             self.assertEqual(jarvis.api_key(), "")

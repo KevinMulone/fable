@@ -1,4 +1,4 @@
-# Jarvis v1.0 — risveglio
+# Jarvis v1.1 — maggiordomo
 
 Jarvis è un assistente personale locale che ascolta dal browser, risponde a voce, archivia automaticamente le conversazioni e mostra una rete 3D di neuroni ruotabile. Mantiene l'ascolto continuo e il confronto sperimentale della voce introdotti nella v0.3. Funziona senza installare pacchetti Python.
 
@@ -11,6 +11,8 @@ Di' **«Jarvis»** da solo (con l'ascolto continuo attivo) e parte la sequenza d
 - **Musica.** Copia il brano che vuoi in `assets/music/intro.mp3` (non è incluso e non viene salvato su git). Parte da circa 7 secondi dall'inizio: il valore `MUSIC_START_SECONDS` in `boot.js` si regola a orecchio. Il volume scende mentre Jarvis parla e si chiude in dissolvenza alla fine.
 - **Audio e browser.** I browser avviano l'audio solo dopo un tocco sulla pagina: il clic su «Avvia ascolto continuo» o su «Risveglio» basta. Se la sequenza parte dalla voce prima di qualunque clic, Jarvis mostra «Attiva il risveglio» e parte al tocco.
 - **Voce.** Con la chiave API le battute fisse vengono generate all'avvio e conservate in `data/tts-cache`; quelle con i numeri vengono generate prima di iniziare, così la sequenza non aspetta la rete. Senza chiave si usa la voce del dispositivo.
+- **Ora e meteo.** Jarvis saluta in base all'ora, dice che ore sono con un commento e il meteo: temperatura attuale, pioggia prevista (con probabilità) o bella giornata. I dati vengono da Open-Meteo, senza registrazione. Scrivi la città nel pannello «La tua voce»; se la lasci vuota, Chrome chiede la posizione; in alternativa crea `data/citta.txt` con il nome della città o imposta `JARVIS_CITY`.
+- **Chiave senza Terminale.** Se metti la chiave OpenAI in `data/openai.key` (una riga), Jarvis la trova da solo anche col doppio clic. La variabile `OPENAI_API_KEY`, se presente, ha la precedenza.
 
 ## Avvio
 

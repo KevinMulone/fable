@@ -1,5 +1,12 @@
 # Versioni di Jarvis
 
+## v1.1 — maggiordomo
+
+- Jarvis chiama «signore» per impostazione predefinita e saluta in base all'ora (buongiorno, buon pomeriggio, buonasera, buonanotte).
+- Tono sarcastico ed elegante nel risveglio, nelle risposte AI e nella voce naturale.
+- Al risveglio dice l'ora con un commento, e il meteo: temperatura, pioggia prevista o bella giornata (Open-Meteo, senza chiave). La città si imposta nel pannello «La tua voce», altrimenti usa la posizione del browser o `data/citta.txt`.
+- La chiave OpenAI può stare in `data/openai.key`: il doppio clic avvia la voce naturale senza Terminale.
+
 ## v1.0 — risveglio
 
 - Sequenza di risveglio a schermo intero quando dici «Jarvis» da solo (una volta al giorno), con il pulsante «Risveglio» o con «Jarvis, riavvia il sistema»: un neurone, la rete che si espande, le etichette dei cluster, il controllo guasti e «È tutto sotto controllo».

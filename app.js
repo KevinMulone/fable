@@ -17,9 +17,13 @@ const AUTO_LISTEN_KEY = 'jarvis-auto-listen-v1';
 const BOOT_DATE_KEY = 'jarvis-boot-date-v1';
 try { naturalVoiceEnabled = localStorage.getItem('jarvis-natural-voice-v1') !== 'false'; } catch { /* Storage unavailable. */ }
 const addressInput = $('#address');
-let address = 'Signor Kevin';
-try { if (['Signor Kevin', 'Signore'].includes(localStorage.getItem('jarvis-address-v1'))) address = localStorage.getItem('jarvis-address-v1'); } catch { /* Storage unavailable. */ }
+let address = 'Signore';
+try { if (['Signor Kevin', 'Signore'].includes(localStorage.getItem('jarvis-address-v2'))) address = localStorage.getItem('jarvis-address-v2'); } catch { /* Storage unavailable. */ }
 addressInput.value = address;
+const cityInput = $('#city');
+let city = '';
+try { city = (localStorage.getItem('jarvis-city-v1') || '').slice(0, 80); } catch { /* Storage unavailable. */ }
+cityInput.value = city;
 const standalone = location.protocol === 'file:';
 const browserStore = window.JarvisBrowserStore;
 let neural = null;
@@ -255,7 +259,7 @@ async function loadState() {
       elements.messages.replaceChildren();
       for (const item of state.messages) addMessage(item.role, item.text);
     } else {
-      elements.messages.firstElementChild.textContent = `Buongiorno, ${address}. Il cervello 3D è attivo e ricorderò automaticamente le nostre conversazioni.`;
+      elements.messages.firstElementChild.textContent = `${window.JarvisBoot.greeting(new Date().getHours())}, ${address === 'Signore' ? 'signore' : address}. Il cervello 3D è attivo e ricorderò automaticamente le nostre conversazioni.`;
     }
   if (standalone) showNotice('Modalità diretta dal file: la memoria resta in questo browser. Per l’ascolto vocale, usa «Avvia Jarvis.command» e apri la pagina locale; se hai già registrato la voce qui, il profilo non passa automaticamente all’altro indirizzo.');
   } catch (error) { showNotice(error.message, true); }
@@ -424,8 +428,13 @@ $('#forget-voice').addEventListener('click', () => {
 });
 addressInput.addEventListener('change', () => {
   address = addressInput.value;
-  try { localStorage.setItem('jarvis-address-v1', address); } catch { /* Storage unavailable. */ }
-  showNotice(`Da ora ti chiamerò ${address}.`);
+  try { localStorage.setItem('jarvis-address-v2', address); } catch { /* Storage unavailable. */ }
+  showNotice(`Da ora la chiamerò ${address}.`);
+});
+cityInput.addEventListener('change', () => {
+  city = cityInput.value.trim().slice(0, 80);
+  try { localStorage.setItem('jarvis-city-v1', city); } catch { /* Storage unavailable. */ }
+  showNotice(city ? `Meteo di ${city} al prossimo risveglio.` : 'Meteo dalla posizione del browser al prossimo risveglio.');
 });
 if (!voiceGate.supported) {
   $('#enroll').disabled = true;
@@ -466,6 +475,32 @@ function applyBrainStatus(status) {
   $('#brain-count').textContent = `${status.neurons.toLocaleString('it-IT')} NEURONI · ${status.systems_active} SISTEMI`;
 }
 
+// Weather for the wake-up line: the configured city, else the browser position, else the server's own city file.
+function browserPosition() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    const timer = setTimeout(() => resolve(null), 6000);
+    navigator.geolocation.getCurrentPosition(
+      (position) => { clearTimeout(timer); resolve({lat: position.coords.latitude, lon: position.coords.longitude}); },
+      () => { clearTimeout(timer); resolve(null); },
+      {timeout: 5000, maximumAge: 600000}
+    );
+  });
+}
+
+async function loadWeather() {
+  if (standalone) return null;
+  try {
+    if (city) return await api(`/api/weather?city=${encodeURIComponent(city)}`);
+    const position = await browserPosition();
+    if (position) return await api(`/api/weather?lat=${position.lat}&lon=${position.lon}`);
+    return await api('/api/weather');
+  } catch (error) {
+    showNotice(`Meteo non disponibile: ${error.message}`);
+    return null;
+  }
+}
+
 async function prefetchBootAudio(lines) {
   bootAudio = new Map();
   if (!naturalVoiceAvailable || !naturalVoiceEnabled || standalone || !speechEnabled) return;
@@ -477,7 +512,7 @@ async function prefetchBootAudio(lines) {
 async function runBoot({force = false} = {}) {
   if (bootSequence.running) return;
   if (!force && bootShownToday()) {
-    speak(`Sì, ${address === 'Signore' ? 'signore' : address}?`);
+    speak(address === 'Signore' ? (new Date().getMinutes() % 2 ? 'Mi dica, signore.' : 'Sì, signore?') : `Sì, ${address}?`);
     return;
   }
   if (!bootMusic.unlocked) {
@@ -492,9 +527,9 @@ async function runBoot({force = false} = {}) {
   }
   $('#boot-unlock').hidden = true;
   showNotice('Risveglio in corso…');
-  let status;
-  try { status = await loadBrainStatus(); } catch (error) { showNotice(`Risveglio non riuscito: ${error.message}`, true); $('#boot-overlay').hidden = true; return; }
-  const lines = boot.buildLines(status, address);
+  let status, weather;
+  try { [status, weather] = await Promise.all([loadBrainStatus(), loadWeather()]); } catch (error) { showNotice(`Risveglio non riuscito: ${error.message}`, true); $('#boot-overlay').hidden = true; return; }
+  const lines = boot.buildLines(status, address, {now: new Date(), weather});
   const music = bootMusic.load().catch((error) => { showNotice(`Musica di avvio non disponibile: ${error.message}`); return null; });
   await Promise.all([prefetchBootAudio(lines), music]);
   try { localStorage.setItem(BOOT_DATE_KEY, boot.today()); } catch { /* Storage unavailable. */ }

@@ -12,33 +12,81 @@
   const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
   const spokenAddress = (address) => address === 'Signore' ? 'signore' : address;
 
-  function buildLines(status, address) {
+  function greeting(hour) {
+    if (hour >= 5 && hour < 13) return 'Buongiorno';
+    if (hour >= 13 && hour < 18) return 'Buon pomeriggio';
+    if (hour >= 18 && hour < 23) return 'Buonasera';
+    return 'Buonanotte';
+  }
+
+  // One dry remark per hour band. Stable within the day so the generated audio is reused.
+  function timeRemark(hour) {
+    if (hour < 7) return 'Un orario in cui persino io preferirei essere spento.';
+    if (hour < 9) return 'Un orario quasi rispettabile.';
+    if (hour < 12) return 'La mattinata è ancora salvabile, con un minimo di impegno.';
+    if (hour < 14) return 'Metà giornata già consumata. Non chiedo in cosa.';
+    if (hour < 18) return 'Il pomeriggio avanza. Lei, spero, altrettanto.';
+    if (hour < 22) return 'La giornata volge al termine. Le ricordo che poteva fare di più.';
+    return 'Qualunque cosa stia facendo a quest’ora, non la giudico. Non troppo.';
+  }
+
+  function spokenTime(now) {
+    const hour = now.getHours(), minute = now.getMinutes();
+    if (minute === 0) return `Sono le ${hour} in punto.`;
+    return `Sono le ${hour} e ${minute}.`;
+  }
+
+  function spokenDegrees(value) {
+    return value < 0 ? `meno ${Math.abs(value)} gradi` : `${value} ${Math.abs(value) === 1 ? 'grado' : 'gradi'}`;
+  }
+
+  function weatherLine(weather) {
+    if (!weather) return 'Il meteo non risponde, oppure nessuno mi ha detto dove siamo. Guardi dalla finestra, per una volta.';
+    const where = weather.place ? ` a ${weather.place}` : '';
+    const now = `Fuori${where} ci sono ${spokenDegrees(weather.temperature)}, ${weather.description}.`;
+    if (weather.rain_expected) {
+      return `${now} È prevista pioggia, probabilità ${weather.rain_probability} per cento: prenda l’ombrello, o fingerò sorpresa quando tornerà bagnato.`;
+    }
+    if (weather.nice_day) {
+      return `${now} Si prevede una bella giornata, massima di ${spokenDegrees(weather.max)}: la invito ad approfittarne. Sarebbe una novità.`;
+    }
+    return `${now} Niente pioggia prevista e niente sole degno di nota: una giornata discreta. Si adegui.`;
+  }
+
+  function buildLines(status, address, options = {}) {
     const who = spokenAddress(address);
+    const now = options.now || new Date();
+    const hour = now.getHours();
     const faults = status.faults || [];
     const repaired = faults.filter((item) => item.repaired);
     const broken = faults.filter((item) => !item.ok);
+    const hello = greeting(hour) === 'Buonanotte' ? `Buonanotte, ${who}. O buongiorno, dipende dai punti di vista.` : `${greeting(hour)}, ${who}.`;
     const lines = [
-      {id: 'greeting', text: `Buongiorno, ${who}.`, scene: {reveal: .01, zoom: 1.7, labels: 0}, log: ['> avvio cervello']},
-      {id: 'neurons', text: `${status.neurons} neuroni online.`, scene: {reveal: 1, zoom: 1, labels: 0}, counters: {neurons: status.neurons},
+      {id: 'greeting', text: hello, scene: {reveal: .01, zoom: 1.7, labels: 0}, log: ['> avvio cervello']},
+      {id: 'time', text: `${spokenTime(now)} ${timeRemark(hour)}`, log: [`> orologio ${String(hour).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`]},
+      {id: 'neurons', text: `${status.neurons} neuroni online. Tutti svegli, a differenza di qualcuno.`, scene: {reveal: 1, zoom: 1, labels: 0}, counters: {neurons: status.neurons},
         log: [`> carico memoria ${status.memory_files} file`, `> carico metodi ${status.methods}`, `> collego neuroni ${status.neurons}`]},
-      {id: 'systems', text: `${plural(status.systems_active, 'sistema attivo', 'sistemi attivi')}, ${plural(status.agents_ready, 'agente pronto', 'agenti pronti')}.`,
+      {id: 'systems', text: `${plural(status.systems_active, 'sistema attivo', 'sistemi attivi')}, ${plural(status.agents_ready, 'agente pronto', 'agenti pronti')}. Nessuno si lamenta.`,
         scene: {labels: 1}, counters: {connections: status.connections, systems: status.systems_active, agents: status.agents_ready},
         log: [`> servizi in linea ${status.systems_active}`, `> agenti ${status.agents_ready} pronti`]}
     ];
     if (repaired.length) {
       const first = repaired[0];
-      lines.push({id: 'faults', text: 'Stamattina ho già riparato quello che si era rotto.',
+      lines.push({id: 'faults', text: 'Ho già riparato quello che si era rotto. Non c’è di che.',
         fault: {cluster: CLUSTER_OF[first.name] || 'sistemi', label: first.label, from: 'fermo', to: 'riparato'},
         log: [`> controllo guasti ${plural(faults.length, 'trovato', 'trovati')}`, '> riparato']});
     } else if (broken.length) {
       const first = broken[0];
-      lines.push({id: 'faults', text: `Ho trovato un problema a ${first.label.toLowerCase()}. Serve il tuo intervento, ${who}.`,
+      lines.push({id: 'faults', text: `Ho trovato un problema a ${first.label.toLowerCase()}. Serve il suo intervento, ${who}. Sì, proprio il suo.`,
         fault: {cluster: CLUSTER_OF[first.name] || 'sistemi', label: first.label, from: 'fermo', to: 'fermo'},
         log: [`> controllo guasti ${plural(broken.length, 'trovato', 'trovati')}`, '> intervento richiesto']});
     } else {
-      lines.push({id: 'faults', text: 'Nessun guasto rilevato.', log: ['> controllo guasti 0 trovati']});
+      lines.push({id: 'faults', text: 'Nessun guasto rilevato. Quasi deludente.', log: ['> controllo guasti 0 trovati']});
     }
-    lines.push({id: 'done', text: 'È tutto sotto controllo.', log: ['> tutto sotto controllo']});
+    const weather = options.weather || null;
+    lines.push({id: 'weather', text: weatherLine(weather),
+      log: [weather ? `> meteo ${weather.temperature}°, ${weather.rain_expected ? 'pioggia prevista' : weather.nice_day ? 'bella giornata' : weather.day_description}` : '> meteo non disponibile']});
+    lines.push({id: 'done', text: `È tutto sotto controllo, ${who}. Come sempre.`, log: ['> tutto sotto controllo']});
     return lines;
   }
 
@@ -217,7 +265,7 @@
   }
 
   const today = () => new Date().toISOString().slice(0, 10);
-  const api = {buildLines, mergeBrowserSystems, localStatus, Music, Sequence, today, MUSIC_START_SECONDS, MIN};
+  const api = {buildLines, greeting, weatherLine, spokenTime, mergeBrowserSystems, localStatus, Music, Sequence, today, MUSIC_START_SECONDS, MIN};
   if (typeof window !== 'undefined') window.JarvisBoot = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

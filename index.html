@@ -27,7 +27,7 @@
   </div>
   <div class="shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-icon">J</span><div><strong>JARVIS</strong><small>Assistente personale · v1.0</small></div></div>
+      <div class="brand"><span class="brand-icon">J</span><div><strong>JARVIS</strong><small>Assistente personale · v1.1</small></div></div>
       <div class="top-actions"><span class="status-dot"></span><span id="mode">Caricamento…</span><button id="wake" class="quiet wake" type="button" title="Avvia la sequenza di risveglio">Risveglio</button><button id="test-voice" class="quiet" type="button">Prova voce</button><button id="quality-toggle" class="quiet" type="button" aria-pressed="false" disabled>Voce naturale: serve API</button><button id="speech-toggle" class="quiet" type="button" aria-pressed="true">Voce attiva</button></div>
     </header>
 
@@ -77,7 +77,10 @@
           <p id="voice-prompt" class="voice-prompt">«Jarvis, sono Kevin e questa è la mia voce.»</p>
           <div class="voice-controls"><button id="enroll" type="button">Registra campione 1/3</button><button id="listen" type="button" disabled>Avvia ascolto continuo</button><button id="forget-voice" class="quiet" type="button" disabled>Elimina profilo</button></div>
           <label class="address-label" for="address">Come devo chiamarti?</label>
-          <select id="address"><option value="Signor Kevin">Signor Kevin</option><option value="Signore">Signore</option></select>
+          <select id="address"><option value="Signore">Signore</option><option value="Signor Kevin">Signor Kevin</option></select>
+          <label class="address-label" for="city">Città per il meteo del risveglio (vuoto = posizione del browser)</label>
+          <input id="city" class="city-input" maxlength="80" autocomplete="off" placeholder="Es. Milano">
+          <p class="voice-privacy">Il meteo arriva da Open-Meteo, senza chiave: viene inviata solo la città o la posizione, nient’altro.</p>
           <p class="voice-privacy">Il confronto vocale avviene nel browser. L'impronta resta su questo dispositivo. È sperimentale e non protegge operazioni riservate o da registrazioni imitate.</p>
           <p id="quality-note" class="voice-privacy">Voce AI non attiva: Jarvis usa una voce installata sul dispositivo. Per la voce naturale avvialo con una chiave API.</p>
         </section>

@@ -130,6 +130,8 @@ h1 { font-size: 26px; } h2 { font-size: 19px; }
 .address-label { display: block; margin: 0 25px 6px; color: #9fc3cb; font-size: 12px; }
 .voice-panel select { display: block; width: calc(100% - 50px); margin: 0 25px 13px; padding: 9px 10px; border: 1px solid #376371; border-radius: 6px; background: #061e2b; color: #e6f9fb; font: inherit; font-size: 12px; }
 .voice-privacy { margin: 0 25px 19px; color: #85a7b2; font-size: 11px; line-height: 1.5; }
+.city-input { display: block; width: calc(100% - 50px); margin: 0 25px 10px; padding: 9px 10px; border: 1px solid #376371; border-radius: 6px; background: #061e2b; color: #e6f9fb; font: inherit; font-size: 12px; }
+@media (max-width: 650px) { .city-input { margin-left: 18px; margin-right: 18px; width: calc(100% - 36px); } }
 .memory { flex: 1; min-height: 230px; }
 .memory-intro { margin: 0 25px 12px; color: #9dc0c9; font-size: 12px; line-height: 1.5; }
 .memory-form { padding: 0 25px 15px; display: flex; gap: 9px; }
