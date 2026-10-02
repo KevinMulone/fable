@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jarvis — assistente personale</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="voice.js" defer></script>
+  <script src="browser-store.js" defer></script>
+  <script src="neurons-3d.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-icon">J</span><div><strong>JARVIS</strong><small>Assistente personale · v0.9</small></div></div>
+      <div class="top-actions"><span class="status-dot"></span><span id="mode">Caricamento…</span><button id="test-voice" class="quiet" type="button">Prova voce</button><button id="quality-toggle" class="quiet" type="button" aria-pressed="false" disabled>Voce naturale: serve API</button><button id="speech-toggle" class="quiet" type="button" aria-pressed="true">Voce attiva</button></div>
+    </header>
+
+    <main class="layout">
+      <section class="panel conversation" aria-labelledby="chat-title">
+        <div class="panel-heading"><div><div class="eyebrow">CONVERSAZIONE</div><h1 id="chat-title">Parla con Jarvis</h1></div><span class="badge">Italiano</span></div>
+        <div id="messages" class="messages" aria-live="polite"><div class="message assistant">Buongiorno, Signor Kevin. Il cervello 3D è attivo e ricorderò automaticamente le nostre conversazioni.</div></div>
+        <div id="notice" class="notice" role="status">Per usare i comandi vocali, registra tre brevi campioni della tua voce e consenti l'accesso al microfono.</div>
+        <form id="chat-form" class="composer"><button id="mic" class="mic" type="button" title="Avvia o ferma l'ascolto continuo" aria-label="Avvia o ferma l'ascolto continuo">🎙</button><input id="prompt" maxlength="2000" autocomplete="off" placeholder="Scrivi o parla con Jarvis…" aria-label="Messaggio per Jarvis"><button class="send" type="submit">Invia</button></form>
+      </section>
+
+      <aside class="side">
+        <section class="panel brain" aria-labelledby="brain-title">
+          <div class="panel-heading brain-heading"><div><div class="eyebrow">NEURAL INTERFACE / LIVE</div><h2 id="brain-title">Cervello di Jarvis</h2></div><span class="brain-status"><i></i> SISTEMA ATTIVO</span></div>
+          <div class="brain-stage">
+            <span class="hud-corner top-left"></span><span class="hud-corner top-right"></span><span class="hud-corner bottom-left"></span><span class="hud-corner bottom-right"></span>
+            <canvas id="neural-canvas" width="520" height="430" role="img" aria-label="Rete tridimensionale di neuroni di Jarvis, ruotabile trascinandola. I pulsanti sotto selezionano i moduli."></canvas>
+            <svg id="brain-map" viewBox="0 0 520 430" role="img" aria-labelledby="brain-svg-title brain-svg-desc">
+              <title id="brain-svg-title">Rete dei moduli di Jarvis</title><desc id="brain-svg-desc">Nucleo centrale collegato a voce, memoria, privacy, portabilità e identità. Seleziona un modulo per leggerne lo stato.</desc>
+              <defs>
+                <radialGradient id="core-gradient"><stop offset="0" stop-color="#4cf9ed" stop-opacity=".42"/><stop offset=".55" stop-color="#0d677a" stop-opacity=".48"/><stop offset="1" stop-color="#051c2a" stop-opacity=".9"/></radialGradient>
+                <filter id="hud-glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <g class="hud-grid"><path d="M0 70H520M0 140H520M0 210H520M0 280H520M0 350H520M65 0V430M130 0V430M195 0V430M260 0V430M325 0V430M390 0V430M455 0V430"/></g>
+              <g class="orbit orbit-outer"><circle cx="260" cy="210" r="158"/><circle cx="260" cy="210" r="136"/></g>
+              <g class="orbit orbit-inner"><circle cx="260" cy="210" r="112"/><circle cx="260" cy="210" r="89"/></g>
+              <g class="ring-arcs"><path d="M138 110 A158 158 0 0 1 380 107 M414 248 A158 158 0 0 1 280 367 M101 232 A158 158 0 0 1 125 115"/><path d="M192 124 A112 112 0 0 1 329 122 M370 231 A112 112 0 0 1 242 321 M151 188 A112 112 0 0 1 182 130"/></g>
+              <g class="links"><path class="link-voce" d="M260 210 L112 94"/><path class="link-memoria" d="M260 210 L409 94"/><path class="link-privacy" d="M260 210 L84 300"/><path class="link-portabilita" d="M260 210 L436 300"/><path class="link-identita" d="M260 210 L260 378"/></g>
+              <g class="synapses"><circle cx="180" cy="148" r="3"/><circle cx="339" cy="148" r="3"/><circle cx="163" cy="260" r="3"/><circle cx="357" cy="260" r="3"/><circle cx="260" cy="308" r="3"/></g>
+              <g class="core-shell"><circle class="core-halo" cx="260" cy="210" r="76"/><circle class="core-ring" cx="260" cy="210" r="65"/><circle class="core-disc" cx="260" cy="210" r="54"/></g>
+              <g class="node core selected" data-node="cervello" tabindex="0" role="button" aria-label="Nucleo Jarvis"><circle class="hit" cx="260" cy="210" r="52"/><text class="core-name" x="260" y="206">JARVIS</text><text class="core-sub" x="260" y="226">CORE ONLINE</text></g>
+              <g class="node" data-node="voce" tabindex="0" role="button" aria-label="Modulo Voce"><circle class="hit" cx="112" cy="94" r="39"/><circle class="node-halo" cx="112" cy="94" r="29"/><circle class="node-disc" cx="112" cy="94" r="24"/><text x="112" y="99">VOCE</text></g>
+              <g class="node" data-node="memoria" tabindex="0" role="button" aria-label="Modulo Memoria"><circle class="hit" cx="409" cy="94" r="42"/><circle class="node-halo" cx="409" cy="94" r="32"/><circle class="node-disc" cx="409" cy="94" r="26"/><text x="409" y="99">MEMORIA</text></g>
+              <g class="node" data-node="privacy" tabindex="0" role="button" aria-label="Modulo Privacy"><circle class="hit" cx="84" cy="300" r="40"/><circle class="node-halo" cx="84" cy="300" r="30"/><circle class="node-disc" cx="84" cy="300" r="24"/><text x="84" y="305">PRIVACY</text></g>
+              <g class="node" data-node="portabilita" tabindex="0" role="button" aria-label="Modulo Portabilità"><circle class="hit" cx="436" cy="300" r="48"/><circle class="node-halo" cx="436" cy="300" r="37"/><circle class="node-disc" cx="436" cy="300" r="31"/><text x="436" y="305">PORTABILITÀ</text></g>
+              <g class="node pending" data-node="identita" tabindex="0" role="button" aria-label="Modulo Identità vocale, in sviluppo"><circle class="hit" cx="260" cy="378" r="39"/><circle class="node-halo" cx="260" cy="378" r="30"/><circle class="node-disc" cx="260" cy="378" r="24"/><text x="260" y="383">IDENTITÀ</text></g>
+              <g class="hud-coordinates"><text x="18" y="22">JRV / 00.3</text><text x="402" y="414">SYS // 5 NODES</text></g>
+            </svg>
+          </div>
+          <nav class="brain-nav" aria-label="Esplora i moduli del cervello"><button type="button" data-brain-node="cervello">Nucleo</button><button type="button" data-brain-node="voce">Voce</button><button type="button" data-brain-node="memoria">Memoria</button><button type="button" data-brain-node="privacy">Privacy</button><button type="button" data-brain-node="portabilita">Portabilità</button><button type="button" data-brain-node="identita">Identità</button></nav>
+          <div class="node-readout"><span id="node-label">NUCLEO CENTRALE</span><span id="node-state">ATTIVO</span><p id="node-detail" aria-live="polite">Coordina conversazione e memoria. Le risposte AI sono disponibili quando configuri una chiave API.</p></div>
+        </section>
+
+        <section class="panel voice-panel" aria-labelledby="voice-title">
+          <div class="panel-heading"><div><div class="eyebrow">ACCESSO VOCALE</div><h2 id="voice-title">La tua voce</h2></div><span id="voice-badge" class="badge">Da configurare</span></div>
+          <p id="voice-help" class="voice-help" aria-live="polite">Premi «Registra campione» e leggi la frase indicata. Servono tre campioni.</p>
+          <p id="voice-prompt" class="voice-prompt">«Jarvis, sono Kevin e questa è la mia voce.»</p>
+          <div class="voice-controls"><button id="enroll" type="button">Registra campione 1/3</button><button id="listen" type="button" disabled>Avvia ascolto continuo</button><button id="forget-voice" class="quiet" type="button" disabled>Elimina profilo</button></div>
+          <label class="address-label" for="address">Come devo chiamarti?</label>
+          <select id="address"><option value="Signor Kevin">Signor Kevin</option><option value="Signore">Signore</option></select>
+          <p class="voice-privacy">Il confronto vocale avviene nel browser. L'impronta resta su questo dispositivo. È sperimentale e non protegge operazioni riservate o da registrazioni imitate.</p>
+          <p id="quality-note" class="voice-privacy">Voce AI non attiva: Jarvis usa una voce installata sul dispositivo. Per la voce naturale avvialo con una chiave API.</p>
+        </section>
+
+        <section class="panel memory" aria-labelledby="memory-title">
+          <div class="panel-heading"><div><div class="eyebrow">ARCHIVIO AUTOMATICO</div><h2 id="memory-title">Memoria di Jarvis</h2></div><span id="memory-count" class="badge">0 scambi</span></div>
+          <p class="memory-intro">Jarvis conserva automaticamente le richieste e le risposte. Qui vedi gli ultimi scambi; puoi chiedergli di recuperare quelli precedenti.</p>
+          <ul id="memory-list" class="memory-list"><li class="empty">Nessuna conversazione ancora registrata.</li></ul>
+        </section>
+      </aside>
+    </main>
+    <footer>Jarvis gira su questo computer. <span id="identity-status">Identità vocale: da configurare</span> · L'ascolto continuo funziona mentre la pagina è aperta e il browser lo consente. Istruzioni nella cartella README.md</footer>
+  </div>
+</body>
+</html>
