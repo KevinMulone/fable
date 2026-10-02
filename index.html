@@ -8,13 +8,27 @@
   <script src="voice.js" defer></script>
   <script src="browser-store.js" defer></script>
   <script src="neurons-3d.js" defer></script>
+  <script src="boot.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
+  <div id="boot-overlay" class="boot" hidden>
+    <canvas id="boot-canvas" aria-label="Rete neurale di Jarvis durante il risveglio"></canvas>
+    <pre id="boot-log" class="boot-log" aria-live="polite"></pre>
+    <div id="boot-caption" class="boot-caption" aria-live="assertive"></div>
+    <div class="boot-counters">
+      <div><strong id="boot-neurons">0</strong><span>neuroni collegati</span></div>
+      <div><strong id="boot-connections">0</strong><span>collegamenti</span></div>
+      <div><strong id="boot-systems" class="amber">0</strong><span>sistemi attivi</span></div>
+      <div><strong id="boot-agents">0</strong><span>agenti in squadra</span></div>
+    </div>
+    <div id="boot-unlock" class="boot-unlock" hidden><p>Il browser attiva l’audio solo dopo un tocco.</p><button id="boot-unlock-button" type="button">Attiva il risveglio</button></div>
+    <button id="boot-skip" class="boot-skip" type="button">Salta</button>
+  </div>
   <div class="shell">
     <header class="topbar">
-      <div class="brand"><span class="brand-icon">J</span><div><strong>JARVIS</strong><small>Assistente personale · v0.9</small></div></div>
-      <div class="top-actions"><span class="status-dot"></span><span id="mode">Caricamento…</span><button id="test-voice" class="quiet" type="button">Prova voce</button><button id="quality-toggle" class="quiet" type="button" aria-pressed="false" disabled>Voce naturale: serve API</button><button id="speech-toggle" class="quiet" type="button" aria-pressed="true">Voce attiva</button></div>
+      <div class="brand"><span class="brand-icon">J</span><div><strong>JARVIS</strong><small>Assistente personale · v1.0</small></div></div>
+      <div class="top-actions"><span class="status-dot"></span><span id="mode">Caricamento…</span><button id="wake" class="quiet wake" type="button" title="Avvia la sequenza di risveglio">Risveglio</button><button id="test-voice" class="quiet" type="button">Prova voce</button><button id="quality-toggle" class="quiet" type="button" aria-pressed="false" disabled>Voce naturale: serve API</button><button id="speech-toggle" class="quiet" type="button" aria-pressed="true">Voce attiva</button></div>
     </header>
 
     <main class="layout">
@@ -27,7 +41,7 @@
 
       <aside class="side">
         <section class="panel brain" aria-labelledby="brain-title">
-          <div class="panel-heading brain-heading"><div><div class="eyebrow">NEURAL INTERFACE / LIVE</div><h2 id="brain-title">Cervello di Jarvis</h2></div><span class="brain-status"><i></i> SISTEMA ATTIVO</span></div>
+          <div class="panel-heading brain-heading"><div><div class="eyebrow">NEURAL INTERFACE / LIVE</div><h2 id="brain-title">Cervello di Jarvis</h2></div><span class="brain-status"><i></i> <span id="brain-count">SISTEMA ATTIVO</span></span></div>
           <div class="brain-stage">
             <span class="hud-corner top-left"></span><span class="hud-corner top-right"></span><span class="hud-corner bottom-left"></span><span class="hud-corner bottom-right"></span>
             <canvas id="neural-canvas" width="520" height="430" role="img" aria-label="Rete tridimensionale di neuroni di Jarvis, ruotabile trascinandola. I pulsanti sotto selezionano i moduli."></canvas>
@@ -53,7 +67,7 @@
               <g class="hud-coordinates"><text x="18" y="22">JRV / 00.3</text><text x="402" y="414">SYS // 5 NODES</text></g>
             </svg>
           </div>
-          <nav class="brain-nav" aria-label="Esplora i moduli del cervello"><button type="button" data-brain-node="cervello">Nucleo</button><button type="button" data-brain-node="voce">Voce</button><button type="button" data-brain-node="memoria">Memoria</button><button type="button" data-brain-node="privacy">Privacy</button><button type="button" data-brain-node="portabilita">Portabilità</button><button type="button" data-brain-node="identita">Identità</button></nav>
+          <nav class="brain-nav" aria-label="Esplora i moduli del cervello"><button type="button" data-brain-node="cervello">Nucleo</button><button type="button" data-brain-node="voce">Voce</button><button type="button" data-brain-node="memoria">Memoria</button><button type="button" data-brain-node="agenti">Agenti</button><button type="button" data-brain-node="archivio">Archivio</button><button type="button" data-brain-node="sistemi">Sistemi</button><button type="button" data-brain-node="privacy">Privacy</button><button type="button" data-brain-node="portabilita">Portabilità</button><button type="button" data-brain-node="identita">Identità</button></nav>
           <div class="node-readout"><span id="node-label">NUCLEO CENTRALE</span><span id="node-state">ATTIVO</span><p id="node-detail" aria-live="polite">Coordina conversazione e memoria. Le risposte AI sono disponibili quando configuri una chiave API.</p></div>
         </section>
 

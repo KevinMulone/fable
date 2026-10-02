@@ -1,5 +1,14 @@
 # Versioni di Jarvis
 
+## v1.0 — risveglio
+
+- Sequenza di risveglio a schermo intero quando dici «Jarvis» da solo (una volta al giorno), con il pulsante «Risveglio» o con «Jarvis, riavvia il sistema»: un neurone, la rete che si espande, le etichette dei cluster, il controllo guasti e «È tutto sotto controllo».
+- Numeri veri con minimo garantito: neuroni dall'archivio, sistemi dai controlli reali (`/api/brain/status`), agenti dalle funzioni attive.
+- Controllo guasti con riparazione automatica (archivio SQLite, cartella dati, cache vocale) e battuta diversa se c'è stato un guasto riparato, uno non riparabile o nessuno.
+- Musica di avvio dal file locale `assets/music/intro.mp3` (non distribuito), con dissolvenza e volume abbassato mentre Jarvis parla.
+- Battute fisse pre-generate e messe in cache (`data/tts-cache`) quando c'è la chiave API: la sequenza parte senza attese.
+- Cervello 3D riorganizzato in cluster (voce, memoria e metodi, agenti, archivio, privacy, sistemi, portabilità, identità) con il numero reale di neuroni.
+
 ## v0.9 — voce naturale originale
 
 - Sintesi vocale AI più fluida quando Jarvis è avviato con una chiave API, con tono originale caldo e tecnologico, senza imitare una persona reale.

@@ -1,5 +1,6 @@
 """Jarvis: local-first personal voice assistant."""
 
+import hashlib
 import json
 import os
 import re
@@ -18,10 +19,33 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "data" / "jarvis.sqlite3"
+TTS_CACHE = ROOT / "data" / "tts-cache"
+MUSIC_PATH = ROOT / "assets" / "music" / "intro.mp3"
 MAX_BODY = 16_384
 MAX_MESSAGE = 2_000
 MAX_SPEECH = 4_000
+MAX_MUSIC = 30_000_000
 LOCK = threading.RLock()
+
+# Minimums for the wake-up sequence: real counts never read below these.
+BRAIN_MIN_NEURONS = 120
+BRAIN_MIN_SYSTEMS = 8
+BRAIN_MIN_AGENTS = 3
+CONNECTIONS_PER_NEURON = 2.7
+
+# Local intents handled without an AI model. Each one counts as a "method" of the brain.
+METHODS = ["saluto", "orario", "data", "ricerca per argomento", "cosa ricordi", "archiviazione automatica", "ricordi espliciti", "risposta AI", "voce naturale", "appellativo"]
+
+# Fixed lines of the wake-up sequence, pre-generated at startup so the sequence starts without waiting.
+BOOT_FIXED_LINES = [
+    "Buongiorno, signore.",
+    "Buongiorno, Signor Kevin.",
+    "Stamattina ho già riparato quello che si era rotto.",
+    "Nessun guasto rilevato.",
+    "È tutto sotto controllo.",
+    "Sì, signore?",
+    "Sì, Signor Kevin?",
+]
 
 
 def connect():
@@ -150,6 +174,157 @@ def ai_reply(value):
     return "\n".join(chunks).strip() or "Non ho ricevuto una risposta dal modello."
 
 
+def message_count():
+    with LOCK, connect() as db:
+        return db.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+
+
+def memory_count():
+    with LOCK, connect() as db:
+        return db.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+
+
+def speech_cache_path(value):
+    return TTS_CACHE / (hashlib.sha256(value.encode("utf-8")).hexdigest()[:32] + ".mp3")
+
+
+def speech_audio(value):
+    """Natural speech with a local cache keyed by text, so repeated lines never wait for the network."""
+    path = speech_cache_path(value)
+    if path.is_file():
+        audio = path.read_bytes()
+        if audio:
+            return audio
+    audio = natural_speech(value)
+    try:
+        TTS_CACHE.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(audio)
+    except OSError:
+        pass
+    return audio
+
+
+def prewarm_speech():
+    """Generate the fixed wake-up lines in the background when an API key is configured."""
+    if not os.environ.get("OPENAI_API_KEY", "").strip():
+        return
+    for line in BOOT_FIXED_LINES:
+        try:
+            speech_audio(line)
+        except RuntimeError as error:
+            print("Jarvis: pre-generazione vocale non riuscita:", error)
+            return
+
+
+def check_database():
+    try:
+        with LOCK, connect() as db:
+            result = db.execute("PRAGMA integrity_check").fetchone()[0]
+            if result != "ok":
+                raise sqlite3.DatabaseError(result)
+        return True, False, "Archivio SQLite integro."
+    except sqlite3.DatabaseError as error:
+        damaged = DB_PATH.with_name(DB_PATH.name + ".danneggiato")
+        try:
+            DB_PATH.replace(damaged)
+            connect().close()
+            return True, True, f"Archivio ricreato; copia danneggiata in {damaged.name}."
+        except OSError:
+            return False, False, f"Archivio non riparabile: {error}"
+
+
+def check_writable(path, label):
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".jarvis-probe"
+        probe.write_text("ok")
+        probe.unlink()
+        return True, False, f"{label} scrivibile."
+    except OSError as error:
+        return False, False, f"{label} non scrivibile: {error}"
+
+
+def check_speech_cache(key):
+    ok, _, detail = check_writable(TTS_CACHE, "Cache vocale")
+    if not ok:
+        return ok, False, detail
+    if not key:
+        return True, False, "Cache vocale pronta; voce naturale non attiva."
+    missing = [line for line in BOOT_FIXED_LINES if not speech_cache_path(line).is_file()]
+    if not missing:
+        return True, False, "Battute di avvio già generate."
+    try:
+        for line in missing:
+            speech_audio(line)
+        return True, True, f"Rigenerate {len(missing)} battute vocali mancanti."
+    except RuntimeError as error:
+        return False, False, str(error)
+
+
+def self_check():
+    """Real health checks; each entry is a 'system'. Repairs what it can and reports what it did."""
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    results = []
+
+    # Optional systems are features that can be off by choice (no API key, no music file): never faults.
+    def add(name, label, ok, repaired=False, detail="", optional=False):
+        results.append({"name": name, "label": label, "ok": bool(ok), "repaired": bool(repaired), "detail": detail, "optional": optional})
+
+    add("server", "SERVER LOCALE", True, detail="In ascolto solo su 127.0.0.1.")
+    add("privacy", "PRIVACY", True, detail="Nessun accesso dalla rete; dati solo in questa cartella.")
+    add("database", "ARCHIVIO SQLITE", *check_database())
+    add("dati", "CARTELLA DATI", *check_writable(DB_PATH.parent, "Cartella dati"))
+    add("memoria", "MEMORIA", True, detail=f"{message_count()} messaggi e {memory_count()} ricordi archiviati.")
+    add("ricerca", "RICERCA MEMORIA", True, detail="Ricerca per parole negli scambi precedenti.")
+    add("metodi", "METODI", True, detail=f"{len(METHODS)} metodi caricati.")
+    add("chat-locale", "CHAT LOCALE", True, detail="Risposte locali attive.")
+    add("chat-ai", "CHAT AI", bool(key), detail="Modello AI configurato." if key else "Chiave API assente: modalità locale.", optional=True)
+    add("voce-naturale", "VOCE NATURALE", bool(key), detail="Sintesi vocale AI attiva." if key else "Chiave API assente: voce del dispositivo.", optional=True)
+    add("cache-vocale", "CACHE VOCALE", *check_speech_cache(key))
+    music = MUSIC_PATH.is_file() and 0 < MUSIC_PATH.stat().st_size <= MAX_MUSIC
+    add("musica", "MUSICA DI AVVIO", music, detail="Brano di avvio presente." if music else "Manca assets/music/intro.mp3.", optional=True)
+    add("portabilita", "PORTABILITÀ", True, detail="Avvio da cartella o chiavetta.")
+    add("cervello-3d", "CERVELLO 3D", True, detail="Rete neurale tridimensionale.")
+    return results
+
+
+AGENTS = [
+    {"name": "conversazione", "label": "CONVERSAZIONE", "needs": "chat-locale"},
+    {"name": "ricerca", "label": "RICERCA MEMORIA", "needs": "ricerca"},
+    {"name": "orologio", "label": "ORA E DATA", "needs": "chat-locale"},
+    {"name": "archivista", "label": "ARCHIVISTA", "needs": "memoria"},
+    {"name": "analista", "label": "ANALISTA AI", "needs": "chat-ai"},
+    {"name": "voce", "label": "VOCE", "needs": "voce-naturale"},
+]
+
+
+def brain_status():
+    systems = self_check()
+    active = {item["name"] for item in systems if item["ok"]}
+    agents = [dict(agent, ready=agent["needs"] in active) for agent in AGENTS]
+    messages_total = message_count()
+    memories_total = memory_count()
+    real_neurons = messages_total + memories_total + len(systems) + len(agents) + len(METHODS)
+    neurons = max(BRAIN_MIN_NEURONS, real_neurons)
+    systems_active = max(BRAIN_MIN_SYSTEMS, len(active))
+    agents_ready = max(BRAIN_MIN_AGENTS, sum(1 for agent in agents if agent["ready"]))
+    faults = [item for item in systems if item["repaired"] or (not item["ok"] and not item["optional"])]
+    return {
+        "neurons": neurons,
+        "connections": round(neurons * CONNECTIONS_PER_NEURON),
+        "systems": systems,
+        "systems_active": systems_active,
+        "agents": agents,
+        "agents_ready": agents_ready,
+        "faults": faults,
+        "memory_files": messages_total + memories_total,
+        "methods": len(METHODS),
+        "minimums": {"neurons": real_neurons < BRAIN_MIN_NEURONS, "systems": len(active) < BRAIN_MIN_SYSTEMS, "agents": sum(1 for agent in agents if agent["ready"]) < BRAIN_MIN_AGENTS},
+        "music": MUSIC_PATH.is_file(),
+        "checked_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
 def natural_speech(value):
     key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not key:
@@ -219,7 +394,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/history":
             query = parse_qs(urlparse(self.path).query).get("query", [""])[0][:200]
             return self.send_json(200, {"history": search_history(query, 20), "history_count": history_count()})
-        files = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/voice.js": ("voice.js", "text/javascript; charset=utf-8"), "/browser-store.js": ("browser-store.js", "text/javascript; charset=utf-8"), "/neurons-3d.js": ("neurons-3d.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8")}
+        if path == "/api/brain/status":
+            return self.send_json(200, brain_status())
+        if path == "/favicon.ico":
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
+        if path == "/assets/music/intro.mp3":
+            if not MUSIC_PATH.is_file() or not 0 < MUSIC_PATH.stat().st_size <= MAX_MUSIC:
+                return self.send_json(404, {"error": "Brano di avvio non trovato. Copia il file in assets/music/intro.mp3."})
+            return self.send_audio(MUSIC_PATH.read_bytes())
+        files = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/boot.js": ("boot.js", "text/javascript; charset=utf-8"), "/voice.js": ("voice.js", "text/javascript; charset=utf-8"), "/browser-store.js": ("browser-store.js", "text/javascript; charset=utf-8"), "/neurons-3d.js": ("neurons-3d.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8")}
         if path not in files:
             return self.send_json(404, {"error": "Non trovato."})
         filename, content_type = files[path]
@@ -240,7 +426,7 @@ class Handler(BaseHTTPRequestHandler):
                 value = data.get("text", "")
                 if not isinstance(value, str) or not 0 < len(value.strip()) <= MAX_SPEECH:
                     raise ValueError("Testo vocale non valido o troppo lungo.")
-                return self.send_audio(natural_speech(value.strip()))
+                return self.send_audio(speech_audio(value.strip()))
             if path == "/api/chat":
                 value = data.get("message", "")
                 if not isinstance(value, str) or not 0 < len(value.strip()) <= MAX_MESSAGE:
@@ -295,6 +481,7 @@ def main():
     connect().close()
     server = ThreadingHTTPServer(("127.0.0.1", 8765), Handler)
     print("Jarvis pronto su http://127.0.0.1:8765")
+    threading.Thread(target=prewarm_speech, daemon=True).start()
     threading.Timer(0.5, open_interface).start()
     try:
         server.serve_forever()

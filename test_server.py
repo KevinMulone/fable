@@ -17,7 +17,11 @@ class JarvisTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
         cls.previous_db = jarvis.DB_PATH
+        cls.previous_cache = jarvis.TTS_CACHE
+        cls.previous_music = jarvis.MUSIC_PATH
         jarvis.DB_PATH = Path(cls.temp.name) / "jarvis.sqlite3"
+        jarvis.TTS_CACHE = Path(cls.temp.name) / "tts-cache"
+        jarvis.MUSIC_PATH = Path(cls.temp.name) / "intro.mp3"
         cls.http = ThreadingHTTPServer(("127.0.0.1", 0), jarvis.Handler)
         cls.thread = threading.Thread(target=cls.http.serve_forever, daemon=True)
         cls.thread.start()
@@ -29,6 +33,8 @@ class JarvisTests(unittest.TestCase):
         cls.http.server_close()
         cls.thread.join(timeout=5)
         jarvis.DB_PATH = cls.previous_db
+        jarvis.TTS_CACHE = cls.previous_cache
+        jarvis.MUSIC_PATH = cls.previous_music
         cls.temp.cleanup()
 
     def request(self, path, method="GET", payload=None):
@@ -64,7 +70,7 @@ class JarvisTests(unittest.TestCase):
         self.assertEqual(result.exception.code, 400)
 
     def test_voice_script_served(self):
-        for path, symbol in [("/voice.js", b"JarvisVoiceGate"), ("/browser-store.js", b"JarvisBrowserStore"), ("/neurons-3d.js", b"JarvisNeural3D")]:
+        for path, symbol in [("/voice.js", b"JarvisVoiceGate"), ("/browser-store.js", b"JarvisBrowserStore"), ("/neurons-3d.js", b"JarvisNeural3D"), ("/boot.js", b"JarvisBoot")]:
             with urllib.request.urlopen(self.base + path, timeout=5) as response:
                 self.assertEqual(response.status, 200)
                 self.assertIn(symbol, response.read())
@@ -96,6 +102,62 @@ class JarvisTests(unittest.TestCase):
                 self.assertEqual(response.headers.get_content_type(), "audio/mpeg")
                 self.assertEqual(response.read(), b"mock-mp3")
             speech.assert_called_once_with("Buongiorno, Signore.")
+
+    def test_speech_is_cached_by_text(self):
+        with patch.object(jarvis, "natural_speech", return_value=b"cached-mp3") as speech:
+            self.assertEqual(jarvis.speech_audio("Battuta da conservare."), b"cached-mp3")
+            self.assertEqual(jarvis.speech_audio("Battuta da conservare."), b"cached-mp3")
+            speech.assert_called_once()
+        self.assertTrue(jarvis.speech_cache_path("Battuta da conservare.").is_file())
+
+    def test_brain_status_counts_real_systems_with_minimums(self):
+        with patch.dict(jarvis.os.environ, {"OPENAI_API_KEY": ""}):
+            status, data = self.request("/api/brain/status")
+        self.assertEqual(status, 200)
+        names = {item["name"] for item in data["systems"]}
+        self.assertIn("database", names)
+        self.assertIn("musica", names)
+        self.assertFalse(next(item for item in data["systems"] if item["name"] == "chat-ai")["ok"])
+        self.assertFalse(next(item for item in data["systems"] if item["name"] == "musica")["ok"])
+        self.assertGreaterEqual(data["neurons"], jarvis.BRAIN_MIN_NEURONS)
+        self.assertEqual(data["connections"], round(data["neurons"] * jarvis.CONNECTIONS_PER_NEURON))
+        self.assertGreaterEqual(data["systems_active"], jarvis.BRAIN_MIN_SYSTEMS)
+        self.assertGreaterEqual(data["agents_ready"], jarvis.BRAIN_MIN_AGENTS)
+        self.assertTrue(data["minimums"]["neurons"])
+        self.assertEqual(len(data["agents"]), len(jarvis.AGENTS))
+
+    def test_brain_status_repairs_damaged_database(self):
+        jarvis.DB_PATH.write_bytes(b"not a database")
+        with patch.dict(jarvis.os.environ, {"OPENAI_API_KEY": ""}):
+            _, data = self.request("/api/brain/status")
+        database = next(item for item in data["systems"] if item["name"] == "database")
+        self.assertTrue(database["ok"])
+        self.assertTrue(database["repaired"])
+        self.assertIn("database", [item["name"] for item in data["faults"]])
+        self.assertTrue(jarvis.DB_PATH.with_name("jarvis.sqlite3.danneggiato").is_file())
+        self.assertEqual(self.request("/api/state")[0], 200)
+
+    def test_music_served_only_when_present(self):
+        with self.assertRaises(urllib.error.HTTPError) as missing:
+            urllib.request.urlopen(self.base + "/assets/music/intro.mp3", timeout=5)
+        self.assertEqual(missing.exception.code, 404)
+        jarvis.MUSIC_PATH.write_bytes(b"ID3mock")
+        try:
+            with urllib.request.urlopen(self.base + "/assets/music/intro.mp3", timeout=5) as response:
+                self.assertEqual(response.headers.get_content_type(), "audio/mpeg")
+                self.assertEqual(response.read(), b"ID3mock")
+            _, data = self.request("/api/brain/status")
+            self.assertTrue(next(item for item in data["systems"] if item["name"] == "musica")["ok"])
+        finally:
+            jarvis.MUSIC_PATH.unlink()
+
+    def test_prewarm_generates_fixed_lines_only_with_key(self):
+        with patch.object(jarvis, "speech_audio") as speech, patch.dict(jarvis.os.environ, {"OPENAI_API_KEY": ""}):
+            jarvis.prewarm_speech()
+            speech.assert_not_called()
+        with patch.object(jarvis, "speech_audio") as speech, patch.dict(jarvis.os.environ, {"OPENAI_API_KEY": "test-key"}):
+            jarvis.prewarm_speech()
+            self.assertEqual([call.args[0] for call in speech.call_args_list], jarvis.BOOT_FIXED_LINES)
 
     def test_natural_speech_uses_original_voice_style(self):
         with patch.dict(jarvis.os.environ, {"OPENAI_API_KEY": "test-key"}), \

@@ -140,6 +140,29 @@ h1 { font-size: 26px; } h2 { font-size: 19px; }
 .memory-list li.empty { color: #87a7b1; }
 .memory-list button { border: 0; background: transparent; color: #ea9a8e; font-size: 17px; line-height: 1; flex: none; }
 footer { padding: 23px 4px; color: #7e9da8; font-size: 11px; }
+.wake { border-color: #4ddbe0; color: #a9fff6; box-shadow: 0 0 14px #2fd8e433; }
+
+/* Wake-up sequence: full-screen stage over the interface. */
+.boot { position: fixed; inset: 0; z-index: 50; background: #000; color: #eaf7ff; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; animation: boot-in .6s ease-out; }
+.boot[hidden] { display: none; }
+.boot.leaving { animation: boot-out .9s ease-in forwards; }
+.boot canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.boot-log { position: absolute; top: 28px; left: 28px; margin: 0; color: #9fd9e6; font-size: 11px; line-height: 1.75; letter-spacing: .04em; white-space: pre; opacity: .85; text-shadow: 0 0 8px #3bc8dd66; }
+.boot-caption { position: absolute; left: 0; right: 0; bottom: 20vh; text-align: center; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: clamp(16px, 2.2vw, 26px); color: #f3fbff; text-shadow: 0 2px 18px #000, 0 0 24px #7fe3ff55; padding: 0 24px; }
+.boot-counters { position: absolute; left: 28px; bottom: 28px; display: flex; gap: 34px; }
+.boot-counters div { display: flex; flex-direction: column; gap: 4px; }
+.boot-counters strong { font-size: clamp(26px, 3.4vw, 44px); font-weight: 700; color: #ffffff; letter-spacing: -.02em; }
+.boot-counters strong.amber { color: #f2a93b; }
+.boot-counters span { font-size: 10px; color: #8fb6c3; letter-spacing: .08em; }
+.boot-unlock { position: absolute; inset: 0; display: grid; place-content: center; gap: 14px; text-align: center; background: #000c; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.boot-unlock[hidden] { display: none; }
+.boot-unlock p { margin: 0; color: #b7d8e0; font-size: 14px; }
+.boot-unlock button { border: 1px solid #4ddbe0; background: #0b3b48; color: #e8ffff; border-radius: 8px; padding: 14px 26px; font-size: 16px; font-weight: 700; box-shadow: 0 0 28px #2fd8e455; }
+.boot-skip { position: absolute; top: 24px; right: 28px; background: transparent; border: 1px solid #2f6470; color: #8fb6c3; border-radius: 6px; padding: 7px 12px; font-size: 11px; opacity: .6; }
+.boot-skip:hover { opacity: 1; color: #e8ffff; }
+@keyframes boot-in { from { opacity: 0; } }
+@keyframes boot-out { to { opacity: 0; } }
+@media (max-width: 650px) { .boot-log { top: 16px; left: 16px; font-size: 9px; max-width: 60vw; overflow: hidden; } .boot-counters { left: 16px; bottom: 16px; gap: 16px; flex-wrap: wrap; } .boot-caption { bottom: 26vh; } }
 @keyframes hud-rotate { to { transform: rotate(360deg); } }
 @keyframes data-flow { to { stroke-dashoffset: -96; } }
 @keyframes synapse-pulse { 50% { opacity: .3; r: 1.5; } }

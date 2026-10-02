@@ -12,7 +12,9 @@ let naturalVoiceAvailable = false;
 let naturalVoiceEnabled = true;
 let activeAudio = null;
 let activeAudioUrl = null;
+const speechWaiters = new Map();
 const AUTO_LISTEN_KEY = 'jarvis-auto-listen-v1';
+const BOOT_DATE_KEY = 'jarvis-boot-date-v1';
 try { naturalVoiceEnabled = localStorage.getItem('jarvis-natural-voice-v1') !== 'false'; } catch { /* Storage unavailable. */ }
 const addressInput = $('#address');
 let address = 'Signor Kevin';
@@ -62,10 +64,14 @@ const nodeDetails = {
   voce: 'La voce viene trascritta dal browser e la risposta è letta ad alta voce. Disponibilità e trattamento dell’audio dipendono dal browser.',
   memoria: 'Archivia automaticamente ogni richiesta e risposta della conversazione. Puoi chiedere a Jarvis di recuperare gli scambi precedenti.',
   cervello: 'Coordina conversazione e memoria. Le risposte AI sono disponibili quando configuri una chiave API.',
+  agenti: 'Le funzioni di risposta pronte: conversazione, ricerca nella memoria, ora e data, archivista, analista AI e voce.',
+  archivio: 'Il database locale con ogni scambio e ricordo. Cresce con l’uso e fa crescere i neuroni del cervello.',
+  sistemi: 'I controlli reali eseguiti al risveglio: server, archivio, cache vocale, musica, riconoscimento vocale. I guasti riparabili vengono sistemati automaticamente.',
   privacy: 'Il server è accessibile solo da questo computer. I ricordi sono in un database locale non cifrato in questa versione.',
   portabilita: 'Copia questa cartella su una chiavetta USB e avvia Jarvis su un computer con Python e browser compatibili.',
   identita: 'Confronto sperimentale dell’impronta vocale, conservata nel browser. Blocca le risposte vocali non riconosciute, ma non è una protezione sicura contro registrazioni o voci imitate.'
 };
+const nodeLabels = {cervello: 'NUCLEO CENTRALE', voce: 'INTERFACCIA VOCALE', memoria: 'MEMORIA E METODI', agenti: 'AGENTI', archivio: 'ARCHIVIO', sistemi: 'SISTEMI', privacy: 'PROTEZIONE DATI', portabilita: 'UNITÀ PORTATILE', identita: 'IDENTITÀ VOCALE'};
 
 function showNotice(message, error = false) {
   elements.notice.textContent = message;
@@ -86,8 +92,7 @@ function selectNode(name) {
   document.querySelectorAll('.links path').forEach((path) => path.classList.toggle('active', path.classList.contains(`link-${name}`)));
   document.querySelectorAll('[data-brain-node]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.brainNode === name)));
   neural?.select(name);
-  const labels = {cervello: 'NUCLEO CENTRALE', voce: 'INTERFACCIA VOCALE', memoria: 'MEMORIA PERSONALE', privacy: 'PROTEZIONE DATI', portabilita: 'UNITÀ PORTATILE', identita: 'IDENTITÀ VOCALE'};
-  $('#node-label').textContent = labels[name];
+  $('#node-label').textContent = nodeLabels[name] || name.toUpperCase();
   const status = $('#node-state');
   status.textContent = name === 'identita' ? (voiceGate.hasProfile ? 'SPERIMENTALE' : 'DA CONFIGURARE') : 'ATTIVO';
   status.classList.toggle('pending', name === 'identita' && !voiceGate.hasProfile);
@@ -120,10 +125,18 @@ function stopOutput() {
   if ('speechSynthesis' in window) speechSynthesis.cancel();
 }
 
+function settleSpeech(sequence) {
+  const resolve = speechWaiters.get(sequence);
+  if (resolve) { speechWaiters.delete(sequence); resolve(); }
+}
+
+let bootHold = false; // While the wake-up sequence runs, the microphone stays paused between lines.
+
 function finishSpeech(sequence, message, error = false) {
+  settleSpeech(sequence);
   if (sequence !== speechSequence) return;
   clearAudio();
-  voiceGate.resumeAfterSpeech();
+  if (!bootHold) voiceGate.resumeAfterSpeech();
   showNotice(message, error);
 }
 
@@ -154,46 +167,57 @@ function speakWithDevice(text, sequence) {
   }
 }
 
-async function speak(text) {
+async function fetchSpeech(text) {
+  const response = await fetch('/api/speech', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text})
+  });
+  if (!response.ok) {
+    let reason = 'Servizio vocale non disponibile.';
+    try { reason = (await response.json()).error || reason; } catch { /* Non-JSON error. */ }
+    throw new Error(reason);
+  }
+  const blob = await response.blob();
+  if (!blob.size) throw new Error('Il servizio ha restituito audio vuoto.');
+  return blob;
+}
+
+// Resolves when Jarvis has finished speaking (or was interrupted). `blob` skips the network when audio is prefetched.
+function speak(text, {blob = null} = {}) {
   if (!speechEnabled) {
     showNotice('La voce di Jarvis è disattivata. Premi «Voce disattivata» per riattivarla.');
-    return false;
+    return Promise.resolve(false);
   }
   const sequence = ++speechSequence;
+  for (const previous of [...speechWaiters.keys()]) settleSpeech(previous);
+  const done = new Promise((resolve) => speechWaiters.set(sequence, resolve));
   stopOutput();
   voiceGate.pauseForSpeech();
-  if (!naturalVoiceAvailable || !naturalVoiceEnabled || standalone) return speakWithDevice(text, sequence);
-  showNotice('Genero la voce naturale di Jarvis…');
-  let fallbackStarted = false;
-  const fallback = (reason) => {
-    if (sequence !== speechSequence || fallbackStarted) return false;
-    fallbackStarted = true;
-    clearAudio();
-    showNotice(`Voce naturale non disponibile: ${reason} Uso la voce del dispositivo.`);
-    return speakWithDevice(text, sequence);
-  };
-  try {
-    const response = await fetch('/api/speech', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text})
-    });
-    if (!response.ok) {
-      let reason = 'Servizio vocale non disponibile.';
-      try { reason = (await response.json()).error || reason; } catch { /* Non-JSON error. */ }
-      throw new Error(reason);
+  const start = async () => {
+    if (!naturalVoiceAvailable || !naturalVoiceEnabled || standalone) return speakWithDevice(text, sequence);
+    let fallbackStarted = false;
+    const fallback = (reason) => {
+      if (sequence !== speechSequence || fallbackStarted) return false;
+      fallbackStarted = true;
+      clearAudio();
+      showNotice(`Voce naturale non disponibile: ${reason} Uso la voce del dispositivo.`);
+      return speakWithDevice(text, sequence);
+    };
+    try {
+      if (!blob) showNotice('Genero la voce naturale di Jarvis…');
+      const audio = blob || await fetchSpeech(text);
+      if (sequence !== speechSequence) return false;
+      activeAudioUrl = URL.createObjectURL(audio);
+      activeAudio = new Audio(activeAudioUrl);
+      activeAudio.onplay = () => { if (sequence === speechSequence) showNotice('Jarvis sta parlando con voce AI naturale…'); };
+      activeAudio.onended = () => finishSpeech(sequence, 'Risposta pronunciata con voce AI naturale.');
+      activeAudio.onerror = () => fallback('riproduzione non riuscita.');
+      await activeAudio.play();
+      return true;
+    } catch (error) {
+      return fallback(error.message);
     }
-    const blob = await response.blob();
-    if (sequence !== speechSequence) return false;
-    if (!blob.size) throw new Error('Il servizio ha restituito audio vuoto.');
-    activeAudioUrl = URL.createObjectURL(blob);
-    activeAudio = new Audio(activeAudioUrl);
-    activeAudio.onplay = () => { if (sequence === speechSequence) showNotice('Jarvis sta parlando con voce AI naturale…'); };
-    activeAudio.onended = () => finishSpeech(sequence, 'Risposta pronunciata con voce AI naturale.');
-    activeAudio.onerror = () => fallback('riproduzione non riuscita.');
-    await activeAudio.play();
-    return true;
-  } catch (error) {
-    return fallback(error.message);
-  }
+  };
+  return start().then((started) => started === false && sequence === speechSequence ? settleSpeech(sequence) : null).then(() => done).then(() => sequence === speechSequence);
 }
 
 function addressed(text) {
@@ -301,9 +325,14 @@ elements.voiceTest.addEventListener('click', () => {
 
 const voiceGate = new window.JarvisVoiceGate({
   onVerified(command) {
+    if (/^(?:riavvia|risveglia|avvia|esegui)\w*\b.*\b(?:sistema|sequenza|cervello|risveglio)|^risveglio$/i.test(command)) {
+      runBoot({force: true});
+      return;
+    }
     elements.prompt.value = command;
     $('#chat-form').requestSubmit();
   },
+  onWake() { runBoot({force: false}); },
   onStatus(message) { showNotice(message); },
   onError(message) { showNotice(message, true); updateVoiceControls(); },
   onListening(active) { elements.mic.classList.toggle('listening', active); updateVoiceControls(); }
@@ -408,6 +437,99 @@ try { if (voiceGate.hasProfile && voiceGate.supported && localStorage.getItem(AU
 neural = new window.JarvisNeural3D($('#neural-canvas'), selectNode);
 document.querySelectorAll('[data-brain-node]').forEach((button) => button.addEventListener('click', () => selectNode(button.dataset.brainNode)));
 selectNode('cervello');
+
+/* Wake-up sequence: "Jarvis" alone starts it once a day; the button or "Jarvis, riavvia il sistema" force it. */
+const boot = window.JarvisBoot;
+const bootMusic = new boot.Music('/assets/music/intro.mp3');
+const bootNeural = new window.JarvisNeural3D($('#boot-canvas'), () => {}, {cinema: true});
+const bootSequence = new boot.Sequence({
+  overlay: $('#boot-overlay'), neural: bootNeural, music: bootMusic,
+  elements: {log: $('#boot-log'), caption: $('#boot-caption'), neurons: $('#boot-neurons'), connections: $('#boot-connections'), systems: $('#boot-systems'), agents: $('#boot-agents')},
+  say: (text) => speak(text, {blob: bootAudio.get(text) || null})
+});
+let bootAudio = new Map();
+let bootPending = null;
+
+function bootShownToday() {
+  try { return localStorage.getItem(BOOT_DATE_KEY) === boot.today(); } catch { return false; }
+}
+
+async function loadBrainStatus() {
+  let status;
+  if (standalone) status = boot.localStatus({messages: await browserStore.count()});
+  else status = await api('/api/brain/status');
+  return boot.mergeBrowserSystems(status, {supported: voiceGate.supported, hasProfile: voiceGate.hasProfile, listening: voiceGate.enabled});
+}
+
+function applyBrainStatus(status) {
+  neural.setStatus(status);
+  $('#brain-count').textContent = `${status.neurons.toLocaleString('it-IT')} NEURONI · ${status.systems_active} SISTEMI`;
+}
+
+async function prefetchBootAudio(lines) {
+  bootAudio = new Map();
+  if (!naturalVoiceAvailable || !naturalVoiceEnabled || standalone || !speechEnabled) return;
+  await Promise.all(lines.map(async (line) => {
+    try { bootAudio.set(line.text, await fetchSpeech(line.text)); } catch { /* The line falls back to the device voice. */ }
+  }));
+}
+
+async function runBoot({force = false} = {}) {
+  if (bootSequence.running) return;
+  if (!force && bootShownToday()) {
+    speak(`Sì, ${address === 'Signore' ? 'signore' : address}?`);
+    return;
+  }
+  if (!bootMusic.unlocked) {
+    const unlocked = await bootMusic.unlock();
+    if (!unlocked) {
+      bootPending = {force};
+      $('#boot-overlay').hidden = false;
+      $('#boot-unlock').hidden = false;
+      showNotice('Il browser attiva l’audio solo dopo un tocco: premi «Attiva il risveglio».');
+      return;
+    }
+  }
+  $('#boot-unlock').hidden = true;
+  showNotice('Risveglio in corso…');
+  let status;
+  try { status = await loadBrainStatus(); } catch (error) { showNotice(`Risveglio non riuscito: ${error.message}`, true); $('#boot-overlay').hidden = true; return; }
+  const lines = boot.buildLines(status, address);
+  const music = bootMusic.load().catch((error) => { showNotice(`Musica di avvio non disponibile: ${error.message}`); return null; });
+  await Promise.all([prefetchBootAudio(lines), music]);
+  try { localStorage.setItem(BOOT_DATE_KEY, boot.today()); } catch { /* Storage unavailable. */ }
+  bootHold = true;
+  voiceGate.pauseForSpeech();
+  let completed = false;
+  try { completed = await bootSequence.run(lines); }
+  finally { bootHold = false; voiceGate.resumeAfterSpeech(); }
+  applyBrainStatus(status);
+  showNotice(completed ? `Risveglio completato: ${status.neurons} neuroni, ${status.systems_active} sistemi attivi, ${status.agents_ready} agenti pronti.` : 'Risveglio interrotto.');
+}
+
+$('#boot-unlock-button').addEventListener('click', async () => {
+  const pending = bootPending || {force: true};
+  bootPending = null;
+  await bootMusic.unlock();
+  $('#boot-unlock').hidden = true;
+  runBoot(pending);
+});
+$('#boot-skip').addEventListener('click', () => {
+  if (bootSequence.running) {
+    bootSequence.cancel();
+    speechSequence++;
+    for (const previous of [...speechWaiters.keys()]) settleSpeech(previous);
+    stopOutput();
+    return;
+  }
+  $('#boot-overlay').hidden = true;
+  $('#boot-unlock').hidden = true;
+  bootPending = null;
+});
+$('#wake').addEventListener('click', () => runBoot({force: true}));
+document.addEventListener('pointerdown', () => { if (!bootMusic.unlocked) bootMusic.unlock(); }, {capture: true});
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && bootSequence.running) $('#boot-skip').click(); });
+loadBrainStatus().then(applyBrainStatus).catch(() => {});
 
 document.querySelectorAll('.node').forEach((node) => {
   const select = () => selectNode(node.dataset.node);

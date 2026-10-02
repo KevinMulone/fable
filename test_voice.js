@@ -46,6 +46,23 @@ test('solo la frase verificata con Jarvis esegue il comando', async () => {
   assert.ok(statuses.some((text) => text.includes('Voce non riconosciuta')));
 });
 
+test('«Jarvis» da solo attiva il risveglio senza inviare comandi', async () => {
+  const commands = [];
+  let wakes = 0;
+  const gate = new VoiceGate({onVerified: (text) => commands.push(text), onStatus() {}, onWake: () => wakes++});
+  gate.enabled = true;
+  gate.printOf = async () => Array(25).fill(0);
+  gate.matches = () => true;
+  gate.captures.push(Promise.resolve({}));
+  await gate.checkUtterance('Jarvis');
+  assert.equal(wakes, 1);
+  assert.equal(commands.length, 0);
+  gate.captures.push(Promise.resolve({}));
+  await gate.checkUtterance('riavvia il sistema');
+  assert.equal(wakes, 1);
+  assert.deepEqual(commands, ['riavvia il sistema']);
+});
+
 test('l’ascolto risulta attivo solo dopo la conferma del browser', async () => {
   const states = [];
   const statuses = [];

@@ -334,6 +334,7 @@
         const command = text.replace(/^\s*(?:ehi|hey|ok)?\s*jarvis[,.:!?\s]*/i, '').trim();
         if (!command) {
           this.callbacks.onStatus('Ti ascolto. Dimmi la tua richiesta.');
+          if (this.callbacks.onWake) this.callbacks.onWake();
           return;
         }
         this.wakeUntil = 0;

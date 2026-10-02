@@ -1,6 +1,16 @@
-# Jarvis v0.9 — voce naturale originale
+# Jarvis v1.0 — risveglio
 
 Jarvis è un assistente personale locale che ascolta dal browser, risponde a voce, archivia automaticamente le conversazioni e mostra una rete 3D di neuroni ruotabile. Mantiene l'ascolto continuo e il confronto sperimentale della voce introdotti nella v0.3. Funziona senza installare pacchetti Python.
+
+## Risveglio
+
+Di' **«Jarvis»** da solo (con l'ascolto continuo attivo) e parte la sequenza di risveglio a schermo intero: un neurone, la rete che si espande, le etichette dei cluster, il controllo dei guasti e «È tutto sotto controllo». La sequenza completa parte una volta al giorno; le altre volte Jarvis risponde «Sì, signore?» e aspetta la richiesta. Per rivederla premi **«Risveglio»** in alto oppure di' «Jarvis, riavvia il sistema». «Salta» o il tasto Esc la interrompono.
+
+- **Numeri veri.** Neuroni = messaggi e ricordi archiviati più moduli, agenti e metodi; sistemi attivi = controlli reali superati (server, archivio, cache vocale, musica, riconoscimento vocale…); agenti pronti = funzioni di risposta disponibili. Sotto le soglie minime (120 neuroni, 8 sistemi, 3 agenti) Jarvis dice il minimo; sopra, crescono con l'uso. L'elenco completo è in `http://127.0.0.1:8765/api/brain/status`.
+- **Controllo guasti.** Al risveglio Jarvis verifica archivio, cartella dati e cache vocale e ripara quello che può (per esempio ricrea un archivio danneggiato, conservando una copia `.danneggiato`). Se ha riparato qualcosa lo dice; se un problema richiede il tuo intervento lo nomina; altrimenti «Nessun guasto rilevato».
+- **Musica.** Copia il brano che vuoi in `assets/music/intro.mp3` (non è incluso e non viene salvato su git). Parte da circa 7 secondi dall'inizio: il valore `MUSIC_START_SECONDS` in `boot.js` si regola a orecchio. Il volume scende mentre Jarvis parla e si chiude in dissolvenza alla fine.
+- **Audio e browser.** I browser avviano l'audio solo dopo un tocco sulla pagina: il clic su «Avvia ascolto continuo» o su «Risveglio» basta. Se la sequenza parte dalla voce prima di qualunque clic, Jarvis mostra «Attiva il risveglio» e parte al tocco.
+- **Voce.** Con la chiave API le battute fisse vengono generate all'avvio e conservate in `data/tts-cache`; quelle con i numeri vengono generate prima di iniziare, così la sequenza non aspetta la rete. Senza chiave si usa la voce del dispositivo.
 
 ## Avvio
 
@@ -47,7 +57,7 @@ Se apri direttamente `index.html`, l'archivio è nel browser tramite IndexedDB. 
 
 ## Cosa è pronto e cosa manca
 
-Pronto: rete di neuroni 3D ruotabile e selezionabile, archivio automatico di richieste e risposte, recupero per parola, ascolto continuo nella pagina dove supportato dal browser, filtro vocale sperimentale per il microfono, risposta parlata alle richieste vocali riconosciute e ai messaggi digitati, voce AI naturale opzionale con ripiego sulla voce del dispositivo, pulsante per provare l'audio, avvio da cartella o chiavetta, funzionamento locale di base e modalità AI opzionale.
+Pronto: sequenza di risveglio con musica e numeri reali, controllo guasti con riparazione automatica, rete di neuroni 3D a cluster ruotabile e selezionabile, archivio automatico di richieste e risposte, recupero per parola, ascolto continuo nella pagina dove supportato dal browser, filtro vocale sperimentale per il microfono, risposta parlata alle richieste vocali riconosciute e ai messaggi digitati, voce AI naturale opzionale con ripiego sulla voce del dispositivo, pulsante per provare l'audio, avvio da cartella o chiavetta, funzionamento locale di base e modalità AI opzionale.
 
 Da realizzare nelle prossime versioni: riconoscimento del parlante con un modello dedicato e verificato, parola di attivazione locale anche a browser chiuso, app native per telefoni, integrazioni con calendario/email/casa, cifratura interna, apprendimento controllato e modello AI completamente offline.
 

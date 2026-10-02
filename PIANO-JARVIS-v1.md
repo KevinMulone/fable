@@ -126,12 +126,14 @@ Il risultato alimenta la battuta 4:
 | Fase | Contenuto | File |
 |------|-----------|------|
 | 0 ✅ | Jarvis v0.9 nel repo, `.gitignore`, cartella musica | — |
-| 1 | `/api/brain/status` + self-check + minimi + test | `server.py`, `test_server.py` |
-| 2 | Cache TTS e `/api/boot/lines` + test | `server.py`, `test_server.py` |
-| 3 | Grafo 3D a cluster, stati nodo, modalità cinema, contatori, log | `neurons-3d.js`, `index.html`, `style.css` |
-| 4 | Musica con fade/ducking e sblocco audio | `app.js`, `index.html` |
-| 5 | Wake word → sequenza, timeline sincronizzata con gli audio, pulsante «Risveglio» | `voice.js`, `app.js` |
-| 6 | README, CHANGELOG v1.0, script di avvio invariati | `README.md`, `CHANGELOG.md` |
+| 1 ✅ | `/api/brain/status` + self-check + minimi + test | `server.py`, `test_server.py` |
+| 2 ✅ | Cache TTS e pre-generazione (le battute si costruiscono nella pagina da `buildLines`, non serve `/api/boot/lines`) | `server.py`, `test_server.py` |
+| 3 ✅ | Grafo 3D a cluster, stati nodo, modalità cinema, contatori, log | `neurons-3d.js`, `index.html`, `style.css` |
+| 4 ✅ | Musica con fade/ducking e sblocco audio | `boot.js`, `app.js`, `index.html` |
+| 5 ✅ | Wake word → sequenza, timeline sincronizzata con gli audio, pulsante «Risveglio» | `voice.js`, `app.js`, `boot.js`, `test_boot.js` |
+| 6 ✅ | README, CHANGELOG v1.0, script di avvio invariati | `README.md`, `CHANGELOG.md` |
+
+Decisioni prese al «procedi» (02/10/2026): appellativo secondo la preferenza esistente («Signore» → «signore» come nel video); cluster di Jarvis; sequenza completa al primo «Jarvis» del giorno, forzabile.
 
 Ogni fase = un commit separato sul branch `claude/optimistic-lovelace-3244dj`, testabile da solo
 (`python3 test_server.py`, `node test_voice.js`, prova manuale in Chrome).
